@@ -1,6 +1,4 @@
-use crate::board::Board;
-
-/// Moves the row to the left and merges adjacent cells with the same value.
+/// Moves the cells to the left and merges adjacent cells with the same value.
 ///
 /// # Examples
 ///
@@ -10,7 +8,6 @@ use crate::board::Board;
 /// assert_eq!(shift_row(row), [3, 3, 0, 0]);
 /// ```
 
-
 pub fn shift_row<const SIZE: usize>(row: &[u8; SIZE]) -> [u8; SIZE] {
     let mut row = row.clone();
     let mut last_pos = 0;
@@ -19,8 +16,6 @@ pub fn shift_row<const SIZE: usize>(row: &[u8; SIZE]) -> [u8; SIZE] {
         if row[i] == 0 {
             continue;
         }
-
-        // println!("{:?} {}", row, last_pos);
 
         if row[i] == row[last_pos] {
             // merge
@@ -40,9 +35,6 @@ pub fn shift_row<const SIZE: usize>(row: &[u8; SIZE]) -> [u8; SIZE] {
     row
 }
 
-
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -52,19 +44,40 @@ mod tests {
         let row = [0, 0, 0, 0];
         assert_eq!(shift_row(&row), [0, 0, 0, 0]);
 
-        let row = [0, 0, 0, 2];
+        let row = [0, 0, 0, 1];
+        assert_eq!(shift_row(&row), [1, 0, 0, 0]);
+
+        let row = [0, 0, 1, 1];
         assert_eq!(shift_row(&row), [2, 0, 0, 0]);
 
-        let row = [0, 0, 2, 2];
-        assert_eq!(shift_row(&row), [3, 0, 0, 0]);
+        let row = [1, 0, 1, 1];
+        assert_eq!(shift_row(&row), [2, 1, 0, 0]);
 
-        let row = [2, 0, 2, 2];
-        assert_eq!(shift_row(&row), [3, 2, 0, 0]);
+        let row = [1, 1, 1, 0];
+        assert_eq!(shift_row(&row), [2, 1, 0, 0]);
 
         let row = [0, 2, 1, 2];
         assert_eq!(shift_row(&row), [2, 1, 2, 0]);
 
         let row = [1, 3, 2, 4];
         assert_eq!(shift_row(&row), [1, 3, 2, 4]);
+
+        let row = [1, 2, 2, 3];
+        assert_eq!(shift_row(&row), [1, 3, 3, 0]);
+
+        let row = [1, 0, 1, 2];
+        assert_eq!(shift_row(&row), [2, 2, 0, 0]);
+
+        let row = [0, 0, 1, 0];
+        assert_eq!(shift_row(&row), [1, 0, 0, 0]);
+
+        let row = [1, 1, 1, 1];
+        assert_eq!(shift_row(&row), [2, 2, 0, 0]);
+
+        let row = [];
+        assert_eq!(shift_row(&row), []);
+
+        let row = [1];
+        assert_eq!(shift_row(&row), [1]);
     }
 }
