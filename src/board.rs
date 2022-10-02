@@ -1,4 +1,4 @@
-use std::hash::{Hash, Hasher};
+use std::{hash::{Hash, Hasher}, fmt::{Debug, Formatter, Result}};
 
 use rand::{
     distributions::{Distribution, Standard, WeightedIndex},
@@ -7,7 +7,7 @@ use rand::{
 
 use crate::shift_row::shift_row;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
     Up,
     Down,
@@ -83,7 +83,7 @@ impl<T: Ord> Iterator for MaxIter<'_, T> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq)]
 pub struct Board<const ROWS: usize, const COLS: usize> {
     board: [[u8; COLS]; ROWS],
     // max_perm: Rc<RefCell<Option<Board<ROWS, COLS>>>>,
@@ -128,7 +128,7 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
         max_iter
     }
 
-    pub fn spawns(&self) -> Vec<(Self, f32)> {
+    pub fn spawns(&self) -> Vec<(Self, f64)> {
         let mut boards = Vec::new();
 
         for (i, row) in self.board.clone().into_iter().enumerate() {
@@ -218,6 +218,15 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
             && (0..ROWS).all(|i| (0..COLS - 1).all(|j| self.board[i][j] != self.board[i][j + 1]))
             && self.board.iter().flatten().all(|&x| x != 0)
     }
+
+    pub fn move_(&self, direction: Direction) -> Self {
+        match direction {
+            Direction::Left => self.move_left(),
+            Direction::Right => self.move_right(),
+            Direction::Up => self.move_up(),
+            Direction::Down => self.move_down(),
+        }
+    }
 }
 
 impl<const R1: usize, const C1: usize, const R2: usize, const C2: usize> PartialEq<Board<R2, C2>>
@@ -236,11 +245,15 @@ impl<const ROWS: usize, const COLS: usize> Hash for Board<ROWS, COLS> {
     }
 }
 
-impl<const ROWS: usize, const COLS: usize> std::fmt::Debug for Board<ROWS, COLS> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl<const ROWS: usize, const COLS: usize> Debug for Board<ROWS, COLS> {
+    fn fmt(&self, f: &mut Formatter) -> Result {
         for row in self.board.iter() {
             for cell in row.iter() {
-                write!(f, "{:2?} ", cell)?;
+                if cell == &0 {
+                    write!(f, " . ")?;
+                } else {
+                    write!(f, "{:2?} ", cell)?;
+                }
             }
             writeln!(f)?;
         }

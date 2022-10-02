@@ -1,10 +1,16 @@
-use rust_2048_solver::{board::Direction, game::Game};
+use std::time::{Duration, Instant};
+
+use rust_2048_solver::{
+    board::Direction,
+    game::{Game, Solver},
+};
 
 fn main() {
     let mut game = Game::<4, 4>::new();
+    let mut ai = Solver::new();
 
     loop {
-        // println!("{:?}", game);
+        println!("{:?}", game);
         // let mut input = String::new();
         // std::io::stdin().read_line(&mut input).unwrap();
         // input = input.trim().to_lowercase();
@@ -18,8 +24,13 @@ fn main() {
         //     _ => continue,
         // };
 
-        let direction: Direction = rand::random();
-        println!("{:?}", direction);
+        // let direction: Direction = rand::random();
+        // println!("{:?}", direction);
+
+        let timeout = Duration::from_millis(1000);
+        let deadline = Instant::now() + timeout;
+        let (_depth, _expected, direction): (u8, f64, Direction) = ai.get_timed(&game.board, deadline);
+
         if game.step(direction) {
             break;
         }
