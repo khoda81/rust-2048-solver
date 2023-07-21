@@ -8,8 +8,9 @@
 /// shift_row(&mut row);
 /// assert_eq!(row, [3, 3, 0, 0]);
 /// ```
-pub fn shift_row<const SIZE: usize>(row: &mut [u8; SIZE]) {
+pub fn shift_row<const SIZE: usize>(row: &mut [u8; SIZE]) -> bool {
     let mut last_pos = 0;
+    let mut changed = false;
 
     for i in 1..row.len() {
         if row[i] == 0 {
@@ -21,6 +22,8 @@ pub fn shift_row<const SIZE: usize>(row: &mut [u8; SIZE]) {
             row[last_pos] += 1;
             row[i] = 0;
             last_pos += 1;
+
+            changed = true;
         } else {
             // move
             if row[last_pos] != 0 {
@@ -28,8 +31,11 @@ pub fn shift_row<const SIZE: usize>(row: &mut [u8; SIZE]) {
             }
 
             row.swap(last_pos, i);
+            changed = changed || last_pos != i;
         }
     }
+
+    changed
 }
 
 #[cfg(test)]

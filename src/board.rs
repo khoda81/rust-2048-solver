@@ -103,16 +103,16 @@ pub struct Board<const ROWS: usize, const COLS: usize> {
 
 impl<const ROWS: usize, const COLS: usize> Default for Board<ROWS, COLS> {
     fn default() -> Self {
-        Self::new()
+        Board {
+            board: [[0; COLS]; ROWS],
+            // max_perm: Default::default(),
+        }
     }
 }
 
 impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
     pub fn new() -> Self {
-        Board {
-            board: [[0; COLS]; ROWS],
-            // max_perm: Default::default(),
-        }
+        Self::default()
     }
 
     pub fn rows_iter(&self) -> impl Iterator<Item = [u8; COLS]> + '_ {
