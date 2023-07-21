@@ -1,4 +1,7 @@
-use std::{hash::{Hash, Hasher}, fmt::{Debug, Formatter, Result}};
+use std::{
+    fmt::{Debug, Formatter, Result},
+    hash::{Hash, Hasher},
+};
 
 use rand::{
     distributions::{Distribution, Standard, WeightedIndex},
@@ -64,21 +67,30 @@ impl<T: Ord> Iterator for MaxIter<'_, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (new_iters, max) =
-            self.iters
-                .drain(..)
-                .fold((Vec::new(), None), |(mut acc, max), mut iter| {
-                    let next = iter.next();
-                    if next > max {
-                        return (vec![iter], next);
-                    } else if next == max {
-                        acc.push(iter);
+        let max;
+
+        (self.iters, max) = self
+            .iters
+            .drain(..)
+            .map(|mut iter| (iter.next(), iter))
+            .fold((Vec::new(), None), |(mut iters, mut max), (next, iter)| {
+                match max.cmp(&next) {
+                    // reset
+                    std::cmp::Ordering::Less => {
+                        iters = vec![iter];
+                        max = next;
                     }
 
-                    (acc, max)
-                });
+                    // add
+                    std::cmp::Ordering::Equal => iters.push(iter),
 
-        self.iters = new_iters;
+                    // ignore
+                    std::cmp::Ordering::Greater => (),
+                }
+
+                (iters, max)
+            });
+
         max
     }
 }
@@ -87,6 +99,12 @@ impl<T: Ord> Iterator for MaxIter<'_, T> {
 pub struct Board<const ROWS: usize, const COLS: usize> {
     board: [[u8; COLS]; ROWS],
     // max_perm: Rc<RefCell<Option<Board<ROWS, COLS>>>>,
+}
+
+impl<const ROWS: usize, const COLS: usize> Default for Board<ROWS, COLS> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
@@ -114,15 +132,10 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
 
     pub fn get_max_perm(&self) -> impl Iterator<Item = &u8> {
         let mut max_iter = MaxIter::new();
+        // TODO check missing permutations
         max_iter.add_iter(self.board.iter().flatten()); // normal
-        max_iter.add_iter(self.board.iter().map(|row| row.iter().rev()).flatten()); // hflip
-        max_iter.add_iter(
-            self.board
-                .iter()
-                .rev()
-                .map(|row| row.iter().rev())
-                .flatten(),
-        ); // 180rot
+        max_iter.add_iter(self.board.iter().flat_map(|row| row.iter().rev())); // hflip
+        max_iter.add_iter(self.board.iter().rev().flat_map(|row| row.iter().rev())); // 180rot
         max_iter.add_iter(self.board.iter().rev().flatten()); // vflip
 
         max_iter
@@ -131,13 +144,13 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
     pub fn spawns(&self) -> Vec<(Self, f64)> {
         let mut boards = Vec::new();
 
-        for (i, row) in self.board.clone().into_iter().enumerate() {
+        for (i, row) in self.board.into_iter().enumerate() {
             for (j, _) in row.into_iter().enumerate().filter(|&c| c.1 == 0) {
-                let mut new_board = self.board.clone();
+                let mut new_board = self.board;
                 new_board[i][j] = 1;
                 boards.push((new_board.into(), 2.));
 
-                let mut new_board = self.board.clone();
+                let mut new_board = self.board;
                 new_board[i][j] = 2;
                 boards.push((new_board.into(), 1.));
             }
@@ -156,7 +169,7 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
     }
 
     pub fn move_left(&self) -> Self {
-        let mut new_board = self.board.clone();
+        let mut new_board = self.board;
         for row in new_board.iter_mut() {
             shift_row(row);
         }
@@ -165,7 +178,7 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
     }
 
     pub fn move_right(&self) -> Self {
-        let mut new_board = self.board.clone();
+        let mut new_board = self.board;
         for row in new_board.iter_mut() {
             row.reverse();
             shift_row(row);
@@ -176,7 +189,7 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
     }
 
     pub fn move_up(&self) -> Self {
-        let mut new_board = self.board.clone();
+        let mut new_board = self.board;
         for i in 0..COLS {
             let mut row = [0; ROWS];
             for j in 0..ROWS {
@@ -194,7 +207,7 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
     }
 
     pub fn move_down(&self) -> Self {
-        let mut new_board = self.board.clone();
+        let mut new_board = self.board;
         for i in 0..COLS {
             let mut row = [0; ROWS];
             for j in 0..ROWS {
@@ -213,7 +226,7 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
         new_board.into()
     }
 
-    pub fn lost(&self) -> bool {
+    pub fn is_lost(&self) -> bool {
         (0..ROWS - 1).all(|i| (0..COLS).all(|j| self.board[i][j] != self.board[i + 1][j]))
             && (0..ROWS).all(|i| (0..COLS - 1).all(|j| self.board[i][j] != self.board[i][j + 1]))
             && self.board.iter().flatten().all(|&x| x != 0)
@@ -270,8 +283,8 @@ impl<const ROWS: usize, const COLS: usize> From<[[u8; COLS]; ROWS]> for Board<RO
     }
 }
 
-impl<const ROWS: usize, const COLS: usize> Into<[[u8; COLS]; ROWS]> for Board<ROWS, COLS> {
-    fn into(self) -> [[u8; COLS]; ROWS] {
-        self.board
+impl<const ROWS: usize, const COLS: usize> From<Board<ROWS, COLS>> for [[u8; COLS]; ROWS] {
+    fn from(val: Board<ROWS, COLS>) -> Self {
+        val.board
     }
 }
