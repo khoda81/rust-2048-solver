@@ -6,10 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use rust_2048_solver::{
-    board::Direction,
-    game::{Game, DFS},
-};
+use rust_2048_solver::{board::Direction, bots::dfs::DFS, game::Game};
 
 pub fn play() {
     let mut game = Game::<4, 4>::create();
