@@ -83,6 +83,6 @@ pub fn benchmark() {
 }
 
 fn main() {
-    // benchmark();
-    play();
+    benchmark();
+    // play();
 }
