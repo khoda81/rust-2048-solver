@@ -38,7 +38,6 @@ impl<const ROWS: usize, const COLS: usize> Debug for Game<ROWS, COLS> {
 pub struct EvaluationEntry {
     pub depth: u32,
     pub value: f64,
-    pub action: Direction,
 }
 
 pub struct DFS<const ROWS: usize, const COLS: usize> {
@@ -66,68 +65,34 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         EvaluationEntry {
             depth: 0,
             value: Self::heuristic(board),
-            action: Direction::Down,
         }
     }
 
     pub fn evaluate_by_depth(
-        board: &Board<ROWS, COLS>,
-        depth: u32,
-        deadline: Instant,
-    ) -> EvaluationEntry {
-        if board.is_lost() {
-            EvaluationEntry {
-                depth: u32::MAX,
-                value: 0.,
-                action: Direction::Up,
-            }
-        } else if depth == 0 {
-            Self::evaluate_by_heuristic(board)
-        } else {
-            Self::evaluate_with(board, deadline, |board| {
-                Self::evaluate_by_depth(board, depth - 1, deadline).value
-            })
-            .map(|(value, action)| EvaluationEntry {
-                depth,
-                value,
-                action,
-            })
-            .unwrap_or(Self::evaluate_by_heuristic(board))
-        }
-    }
-
-    pub fn cached_evaluate_by_depth(
         &mut self,
         board: &Board<ROWS, COLS>,
         depth: u32,
         deadline: Instant,
     ) -> EvaluationEntry {
-        if depth < 1 {
-            return Self::evaluate_by_depth(board, depth, deadline);
+        if depth == 0 {
+            return Self::evaluate_by_heuristic(board);
         }
 
         if board.is_lost() {
             return EvaluationEntry {
                 depth: u32::MAX,
                 value: 0.,
-                action: Direction::Up,
             };
         }
 
         match self.evaluation_cache.get(board) {
             Some(entry) if entry.depth >= depth => *entry,
             _ => {
-                let entry = Self::evaluate_with(board, deadline, |board| {
-                    self.cached_evaluate_by_depth(board, depth - 1, deadline)
-                        .value
-                })
-                .map(|(value, action)| EvaluationEntry {
-                    depth,
-                    value,
-                    action,
-                })
-                .or_else(|| self.evaluation_cache.get(board).copied())
-                .unwrap_or(Self::evaluate_by_heuristic(board));
+                let entry = self
+                    .find_best_action(board, depth - 1, deadline)
+                    .map(|(value, _)| EvaluationEntry { depth, value })
+                    .or_else(|| self.evaluation_cache.get(board).copied())
+                    .unwrap_or(Self::evaluate_by_heuristic(board));
 
                 self.evaluation_cache.insert(board.clone(), entry);
 
@@ -136,14 +101,12 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         }
     }
 
-    pub fn evaluate_with<F>(
+    pub fn find_best_action(
+        &mut self,
         board: &Board<ROWS, COLS>,
+        depth: u32,
         deadline: Instant,
-        mut heuristic: F,
-    ) -> Option<(f64, Direction)>
-    where
-        F: FnMut(&Board<ROWS, COLS>) -> f64,
-    {
+    ) -> Option<(f64, Direction)> {
         let mut best_action_value = (f64::NEG_INFINITY, Direction::Up);
 
         for direction in [
@@ -167,7 +130,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
                     return None;
                 }
 
-                let evaluation = heuristic(&new_board);
+                let evaluation = self.evaluate_by_depth(&new_board, depth, deadline).value;
 
                 numerator += weight * evaluation;
                 denominator += weight;
@@ -190,12 +153,19 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         // pessimistic deadline to end early instead of late
         let deadline = deadline - Duration::from_micros(100);
 
-        let mut evaluation = self.cached_evaluate_by_depth(board, 0, deadline);
+        let mut evaluation = self.evaluate_by_depth(board, 0, deadline);
 
         while Instant::now() < deadline {
-            evaluation = self.cached_evaluate_by_depth(board, evaluation.depth + 1, deadline);
+            evaluation = self.evaluate_by_depth(board, evaluation.depth + 1, deadline);
         }
 
         evaluation
+    }
+
+    pub fn act(&mut self, board: &Board<ROWS, COLS>, deadline: Instant) -> Direction {
+        self.evaluate_until(board, deadline);
+        self.find_best_action(board, 1, Instant::now() + Duration::from_millis(100))
+            .unwrap()
+            .1
     }
 }
