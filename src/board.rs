@@ -132,11 +132,18 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
 
     pub fn get_max_perm(&self) -> impl Iterator<Item = &u8> {
         let mut max_iter = MaxIter::new();
-        // TODO check missing permutations
-        max_iter.add_iter(self.board.iter().flatten()); // normal
-        max_iter.add_iter(self.board.iter().flat_map(|row| row.iter().rev())); // hflip
-        max_iter.add_iter(self.board.iter().rev().flat_map(|row| row.iter().rev())); // 180rot
-        max_iter.add_iter(self.board.iter().rev().flatten()); // vflip
+
+        let product = itertools::iproduct!(0..ROWS, 0..COLS);
+        max_iter.add_iter(product.clone().map(|(r, c)| &self.board[r][c]));
+        max_iter.add_iter(product.clone().map(|(r, c)| &self.board[ROWS - r - 1][c]));
+        max_iter.add_iter(product.clone().map(|(r, c)| &self.board[r][COLS - c - 1]));
+        max_iter.add_iter(product.map(|(r, c)| &self.board[ROWS - r - 1][COLS - c - 1]));
+
+        let product = itertools::iproduct!(0..COLS, 0..ROWS);
+        max_iter.add_iter(product.clone().map(|(c, r)| &self.board[r][c]));
+        max_iter.add_iter(product.clone().map(|(c, r)| &self.board[ROWS - r - 1][c]));
+        max_iter.add_iter(product.clone().map(|(c, r)| &self.board[r][COLS - c - 1]));
+        max_iter.add_iter(product.map(|(c, r)| &self.board[ROWS - r - 1][COLS - c - 1]));
 
         max_iter
     }

@@ -1,7 +1,10 @@
 #![allow(unused_imports)]
 
 use rust_2048_solver::board::Board;
-use std::time::{Duration, Instant};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    time::{Duration, Instant},
+};
 
 use rust_2048_solver::{
     board::Direction,
@@ -10,6 +13,15 @@ use rust_2048_solver::{
 
 pub fn main1() {
     let mut game = Game::<4, 4>::create();
+    game.board = [
+        // BOARD
+        [3, 3, 1, 1],
+        [1, 9, 5, 0],
+        [10, 2, 7, 4],
+        [6, 1, 6, 8],
+    ]
+    .into();
+
     let mut ai = DFS::new();
 
     loop {
@@ -30,7 +42,7 @@ pub fn main1() {
         // let direction: Direction = rand::random();
         // println!("{:?}", direction);
 
-        let timeout = Duration::from_secs_f64(0.2);
+        let timeout = Duration::from_secs_f64(0.5);
         let deadline = Instant::now() + timeout;
 
         let result = ai.evaluate_until(&game.board, deadline);
@@ -40,7 +52,7 @@ pub fn main1() {
             println!("missed: {miss:?}");
         }
 
-        println!("{result:?}");
+        println!("{result:.2?}");
         if game.step(result.action) {
             break;
         }
@@ -50,12 +62,21 @@ pub fn main1() {
 }
 
 pub fn main() {
-    let board = Game::<4, 4>::create().board;
+    let board = [
+        // BOARD
+        [0, 1, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 0],
+    ]
+    .into();
+
     let mut ai = DFS::new();
 
     let start = Instant::now();
-    let deadline = start + Duration::from_secs_f64(100.);
+    let deadline = start + Duration::from_secs_f64(2.5);
 
+    ai.cached_evaluate_by_depth(&board, 4, deadline);
     let result = ai.cached_evaluate_by_depth(&board, 5, deadline);
 
     println!("{:?}", start.elapsed());
