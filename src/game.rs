@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fmt::{Debug, Formatter, Result},
+    fmt::{self, Debug, Formatter},
     time::{Duration, Instant},
 };
 
@@ -29,7 +29,7 @@ impl<const ROWS: usize, const COLS: usize> Game<ROWS, COLS> {
 }
 
 impl<const ROWS: usize, const COLS: usize> Debug for Game<ROWS, COLS> {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{:?}", self.board)
     }
 }
@@ -43,6 +43,16 @@ pub struct EvaluationEntry {
 pub struct DFS<const ROWS: usize, const COLS: usize> {
     evaluation_cache: HashMap<Board<ROWS, COLS>, EvaluationEntry>,
 }
+#[derive(Debug)]
+pub struct TimeOut;
+
+impl fmt::Display for TimeOut {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Reached deadline before finishing computation")
+    }
+}
+
+impl std::error::Error for TimeOut {}
 
 impl<const ROWS: usize, const COLS: usize> Default for DFS<ROWS, COLS> {
     fn default() -> Self {
@@ -91,6 +101,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
                 let entry = self
                     .find_best_action(board, depth - 1, deadline)
                     .map(|(value, _)| EvaluationEntry { depth, value })
+                    .ok()
                     .or_else(|| self.evaluation_cache.get(board).copied())
                     .unwrap_or(Self::evaluate_by_heuristic(board));
 
@@ -106,7 +117,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         board: &Board<ROWS, COLS>,
         depth: u32,
         deadline: Instant,
-    ) -> Option<(f64, Direction)> {
+    ) -> Result<(f64, Direction), TimeOut> {
         let mut best_action_value = (f64::NEG_INFINITY, Direction::Up);
 
         for direction in [
@@ -127,7 +138,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
             for (new_board, weight) in new_board.spawns() {
                 // TODO optimize
                 if Instant::now() >= deadline {
-                    return None;
+                    return Err(TimeOut);
                 }
 
                 let evaluation = self.evaluate_by_depth(&new_board, depth, deadline).value;
@@ -142,7 +153,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
             }
         }
 
-        Some(best_action_value)
+        Ok(best_action_value)
     }
 
     pub fn evaluate_until(
@@ -164,8 +175,10 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
 
     pub fn act(&mut self, board: &Board<ROWS, COLS>, deadline: Instant) -> Direction {
         self.evaluate_until(board, deadline);
-        self.find_best_action(board, 1, Instant::now() + Duration::from_millis(100))
-            .unwrap()
-            .1
+        let (_value, action) = self
+            .find_best_action(board, 1, Instant::now() + Duration::from_millis(100))
+            .unwrap();
+
+        action
     }
 }
