@@ -39,7 +39,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
     }
 
     pub fn heuristic(board: &Board<ROWS, COLS>) -> f64 {
-        board.rows_iter().flatten().filter(|&x| x == 0).count() as f64 + 1000.
+        board.count_empty() as f64 + 1000.
     }
 
     fn evaluate_by_heuristic(board: &Board<ROWS, COLS>) -> EvaluationEntry {
