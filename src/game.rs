@@ -14,10 +14,10 @@ impl<const ROWS: usize, const COLS: usize> Game<ROWS, COLS> {
     }
 
     pub fn step(&mut self, direction: Direction) -> bool {
-        let new_board = self.board.move_(direction);
+        let moved = self.board.swipe(direction);
 
-        if !new_board.rows_iter().eq(self.board.rows_iter()) {
-            self.board = new_board.random_spawn();
+        if moved {
+            self.board = self.board.random_spawn();
         }
 
         self.board.is_lost()

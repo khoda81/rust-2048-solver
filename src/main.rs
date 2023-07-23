@@ -23,11 +23,12 @@ pub fn play() {
 
     loop {
         println!("{:?}", game);
+
         // let mut input = String::new();
         // std::io::stdin().read_line(&mut input).unwrap();
         // input = input.trim().to_lowercase();
 
-        // let direction = match input.as_str() {
+        // let action = match input.as_str() {
         //     "w" => Direction::Up,
         //     "a" => Direction::Left,
         //     "s" => Direction::Down,
@@ -36,8 +37,7 @@ pub fn play() {
         //     _ => continue,
         // };
 
-        // let direction: Direction = rand::random();
-        // println!("{:?}", direction);
+        // let action: Direction = rand::random();
 
         let timeout = Duration::from_secs_f64(0.1);
         let deadline = Instant::now() + timeout;
@@ -49,7 +49,7 @@ pub fn play() {
             println!("missed: {miss:?}");
         }
 
-        println!("{action:.2?}");
+        println!("{action:?}");
         if game.step(action) {
             break;
         }

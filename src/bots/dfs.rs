@@ -97,9 +97,10 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
             Direction::Left,
             Direction::Right,
         ] {
-            let new_board = board.move_(direction);
+            let mut new_board = board.clone();
+            let moved = new_board.swipe(direction);
 
-            if new_board.rows_iter().eq(board.rows_iter()) {
+            if !moved {
                 continue;
             }
 

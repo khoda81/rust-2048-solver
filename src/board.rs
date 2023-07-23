@@ -166,7 +166,7 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
         boards
     }
 
-    pub fn random_spawn(&self) -> Self {
+    pub fn random_spawn(&mut self) -> Self {
         let mut options = self.spawns();
         let weights = options.iter().map(|item| item.1);
         let dist = WeightedIndex::new(weights).unwrap();
@@ -175,46 +175,50 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
         options.swap_remove(index).0
     }
 
-    pub fn move_left(&self) -> Self {
-        let mut new_board = self.board;
-        for row in new_board.iter_mut() {
-            shift_row(row);
-        }
-
-        new_board.into()
+    pub fn move_left(&mut self) -> bool {
+        self.board
+            .iter_mut()
+            .filter_map(|row| shift_row(row).then_some(()))
+            .count()
+            .gt(&0)
     }
 
-    pub fn move_right(&self) -> Self {
-        let mut new_board = self.board;
-        for row in new_board.iter_mut() {
-            row.reverse();
-            shift_row(row);
-            row.reverse();
-        }
-
-        new_board.into()
+    pub fn move_right(&mut self) -> bool {
+        self.board
+            .iter_mut()
+            .filter_map(|row| {
+                row.reverse();
+                let moved = shift_row(row);
+                row.reverse();
+                moved.then_some(())
+            })
+            .count()
+            .gt(&0)
     }
 
-    pub fn move_up(&self) -> Self {
+    pub fn move_up(&mut self) -> bool {
         let mut new_board = self.board;
+        let mut moved = false;
         for i in 0..COLS {
             let mut row = [0; ROWS];
             for j in 0..ROWS {
                 row[j] = new_board[j][i];
             }
 
-            shift_row(&mut row);
+            moved |= shift_row(&mut row);
 
             for j in 0..ROWS {
                 new_board[j][i] = row[j];
             }
         }
 
-        new_board.into()
+        self.board = new_board;
+        moved
     }
 
-    pub fn move_down(&self) -> Self {
+    pub fn move_down(&mut self) -> bool {
         let mut new_board = self.board;
+        let mut moved = false;
         for i in 0..COLS {
             let mut row = [0; ROWS];
             for j in 0..ROWS {
@@ -222,7 +226,7 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
             }
 
             row.reverse();
-            shift_row(&mut row);
+            moved |= shift_row(&mut row);
             row.reverse();
 
             for j in 0..ROWS {
@@ -230,7 +234,8 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
             }
         }
 
-        new_board.into()
+        self.board = new_board;
+        moved
     }
 
     pub fn is_lost(&self) -> bool {
@@ -239,7 +244,7 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
             && self.board.iter().flatten().all(|&x| x != 0)
     }
 
-    pub fn move_(&self, direction: Direction) -> Self {
+    pub fn swipe(&mut self, direction: Direction) -> bool {
         match direction {
             Direction::Left => self.move_left(),
             Direction::Right => self.move_right(),
