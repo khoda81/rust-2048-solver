@@ -1,8 +1,9 @@
 use std::{
-    fmt::{Debug, Formatter, Result},
+    fmt,
     hash::{Hash, Hasher},
 };
 
+use itertools::Itertools;
 use rand::{
     distributions::{Distribution, Standard, WeightedIndex},
     Rng,
@@ -95,6 +96,46 @@ impl<T: Ord> Iterator for MaxIter<'_, T> {
     }
 }
 
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct Dihedral<const N: u8> {
+    flip: bool,
+    rot: u8,
+}
+
+impl<const N: u8> Dihedral<N> {
+    pub fn op(&self, other: &Self) -> Self {
+        Self {
+            flip: self.flip != other.flip,
+            rot: if other.flip { N - self.rot } else { self.rot } + other.rot % N,
+        }
+    }
+
+    pub fn inverse(&self) -> Self {
+        Self {
+            rot: if self.flip { N - self.rot } else { self.rot },
+            flip: self.flip,
+        }
+    }
+}
+
+impl From<Dihedral<2>> for Dihedral<4> {
+    fn from(value: Dihedral<2>) -> Self {
+        Self {
+            flip: value.flip,
+            rot: 2 * value.rot,
+        }
+    }
+}
+
+impl From<Dihedral<1>> for Dihedral<4> {
+    fn from(value: Dihedral<1>) -> Self {
+        Self {
+            flip: value.flip,
+            rot: 0,
+        }
+    }
+}
+
 #[derive(Clone, Eq)]
 pub struct Board<const ROWS: usize, const COLS: usize> {
     board: [[u8; COLS]; ROWS],
@@ -133,17 +174,19 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
     pub fn get_max_perm(&self) -> impl Iterator<Item = &u8> {
         let mut max_iter = MaxIter::new();
 
-        let product = itertools::iproduct!(0..ROWS, 0..COLS);
+        let product = (0..ROWS).cartesian_product(0..COLS);
         max_iter.add_iter(product.clone().map(|(r, c)| &self.board[r][c]));
         max_iter.add_iter(product.clone().map(|(r, c)| &self.board[ROWS - r - 1][c]));
         max_iter.add_iter(product.clone().map(|(r, c)| &self.board[r][COLS - c - 1]));
         max_iter.add_iter(product.map(|(r, c)| &self.board[ROWS - r - 1][COLS - c - 1]));
 
-        let product = itertools::iproduct!(0..COLS, 0..ROWS);
-        max_iter.add_iter(product.clone().map(|(c, r)| &self.board[r][c]));
-        max_iter.add_iter(product.clone().map(|(c, r)| &self.board[ROWS - r - 1][c]));
-        max_iter.add_iter(product.clone().map(|(c, r)| &self.board[r][COLS - c - 1]));
-        max_iter.add_iter(product.map(|(c, r)| &self.board[ROWS - r - 1][COLS - c - 1]));
+        if ROWS == COLS {
+            let product = (0..COLS).cartesian_product(0..ROWS);
+            max_iter.add_iter(product.clone().map(|(c, r)| &self.board[r][c]));
+            max_iter.add_iter(product.clone().map(|(c, r)| &self.board[ROWS - r - 1][c]));
+            max_iter.add_iter(product.clone().map(|(c, r)| &self.board[r][COLS - c - 1]));
+            max_iter.add_iter(product.map(|(c, r)| &self.board[ROWS - r - 1][COLS - c - 1]));
+        }
 
         max_iter
     }
@@ -270,14 +313,14 @@ impl<const ROWS: usize, const COLS: usize> Hash for Board<ROWS, COLS> {
     }
 }
 
-impl<const ROWS: usize, const COLS: usize> Debug for Board<ROWS, COLS> {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+impl<const ROWS: usize, const COLS: usize> fmt::Debug for Board<ROWS, COLS> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for row in self.board.iter() {
             for cell in row.iter() {
                 if cell == &0 {
                     write!(f, " . ")?;
                 } else {
-                    write!(f, "{:2?} ", cell)?;
+                    write!(f, "{cell:2?} ")?;
                 }
             }
             writeln!(f)?;
@@ -298,5 +341,17 @@ impl<const ROWS: usize, const COLS: usize> From<[[u8; COLS]; ROWS]> for Board<RO
 impl<const ROWS: usize, const COLS: usize> From<Board<ROWS, COLS>> for [[u8; COLS]; ROWS] {
     fn from(val: Board<ROWS, COLS>) -> Self {
         val.board
+    }
+}
+
+#[cfg(test)]
+mod test_super {
+    use super::*;
+
+    #[test]
+    fn test_board_eq() {
+        let corner1 = Board::from([[0, 0, 0, 1], [0, 0, 0, 0], [0, 0, 0, 0]]);
+        let corner2 = Board::from([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+        assert_eq!(corner1, corner2);
     }
 }
