@@ -10,14 +10,14 @@ use rust_2048_solver::{board::Direction, bots::dfs::DFS, game::Game};
 
 pub fn play() {
     let mut game = Game::<4, 4>::create();
-    game.board = [
-        // BOARD
-        [3, 3, 1, 1],
-        [1, 9, 5, 0],
-        [10, 2, 7, 4],
-        [6, 1, 6, 8],
-    ]
-    .into();
+    // game.board = [
+    //     // BOARD
+    //     [3, 3, 1, 1],
+    //     [1, 9, 5, 0],
+    //     [10, 2, 7, 4],
+    //     [6, 1, 6, 8],
+    // ]
+    // .into();
 
     let mut ai = DFS::new();
 
@@ -59,15 +59,20 @@ pub fn play() {
 }
 
 pub fn benchmark() {
+    let mut ai = DFS::new();
+
     let mut board;
     board = [
         // BOARD
-        [0, 1, 0, 0],
-        [0, 0, 0, 0],
-        [0, 0, 1, 0],
-        [0, 0, 0, 0],
+        [3, 3, 7, 1],
+        [0, 9, 5, 0],
+        [10, 0, 7, 4],
+        [6, 1, 6, 8],
     ]
     .into();
+
+    // fill cache for a more accurate benchmark
+    ai.act(&board, Instant::now() + Duration::from_secs_f64(1.9));
 
     board = [
         // BOARD
@@ -78,10 +83,8 @@ pub fn benchmark() {
     ]
     .into();
 
-    let mut ai = DFS::new();
-
     let start = Instant::now();
-    let deadline = start + Duration::from_secs_f64(2.5);
+    let deadline = start + Duration::from_secs_f64(1.0);
 
     let result = ai.evaluate_by_depth(&board, 8, deadline);
 

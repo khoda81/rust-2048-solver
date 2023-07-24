@@ -12,7 +12,7 @@ pub struct EvaluationEntry {
 }
 
 pub struct DFS<const ROWS: usize, const COLS: usize> {
-    evaluation_cache: HashMap<Board<ROWS, COLS>, EvaluationEntry>,
+    pub evaluation_cache: HashMap<Board<ROWS, COLS>, EvaluationEntry>,
 }
 #[derive(Debug)]
 pub struct TimeOut;
@@ -39,7 +39,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
     }
 
     pub fn heuristic(board: &Board<ROWS, COLS>) -> f64 {
-        (board.count_empty() as f64 + 3.).powi(2)
+        2_usize.pow((board.count_empty() + 1) as u32) as f64
     }
 
     fn evaluate_by_heuristic(board: &Board<ROWS, COLS>) -> EvaluationEntry {
@@ -136,12 +136,17 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         // pessimistic deadline to end early instead of late
         let deadline = deadline - Duration::from_micros(100);
 
-        let mut evaluation = self.evaluate_by_depth(board, 0, deadline);
+        let mut evaluation = self.evaluate_by_depth(board, 1, deadline);
 
         while Instant::now() < deadline {
-            evaluation = self.evaluate_by_depth(board, evaluation.depth + 1, deadline);
+            let search_depth = evaluation.depth + 1;
+            let new_evaluation = self.evaluate_by_depth(board, search_depth, deadline);
+            if new_evaluation.depth > evaluation.depth {
+                evaluation = new_evaluation;
+            }
         }
 
+        println!("{evaluation:.2?}");
         evaluation
     }
 
