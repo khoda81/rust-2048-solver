@@ -27,17 +27,17 @@ impl Distribution<Direction> for Standard {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Board<const ROWS: usize, const COLS: usize> {
+pub struct Board<const COLS: usize, const ROWS: usize> {
     pub cells: [[u8; COLS]; ROWS],
 }
 
-impl<const ROWS: usize, const COLS: usize> Default for Board<ROWS, COLS> {
+impl<const COLS: usize, const ROWS: usize> Default for Board<COLS, ROWS> {
     fn default() -> Self {
         [[0; COLS]; ROWS].into()
     }
 }
 
-impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
+impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -147,7 +147,7 @@ impl<const ROWS: usize, const COLS: usize> Board<ROWS, COLS> {
     }
 }
 
-impl<const ROWS: usize, const COLS: usize> fmt::Display for Board<ROWS, COLS> {
+impl<const COLS: usize, const ROWS: usize> fmt::Display for Board<COLS, ROWS> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for row in self.cells.iter() {
             for cell in row.iter() {
@@ -163,14 +163,14 @@ impl<const ROWS: usize, const COLS: usize> fmt::Display for Board<ROWS, COLS> {
     }
 }
 
-impl<const ROWS: usize, const COLS: usize> From<[[u8; COLS]; ROWS]> for Board<ROWS, COLS> {
+impl<const COLS: usize, const ROWS: usize> From<[[u8; COLS]; ROWS]> for Board<COLS, ROWS> {
     fn from(cells: [[u8; COLS]; ROWS]) -> Self {
         Self { cells }
     }
 }
 
-impl<const ROWS: usize, const COLS: usize> From<Board<ROWS, COLS>> for [[u8; COLS]; ROWS] {
-    fn from(board: Board<ROWS, COLS>) -> Self {
+impl<const COLS: usize, const ROWS: usize> From<Board<COLS, ROWS>> for [[u8; COLS]; ROWS] {
+    fn from(board: Board<COLS, ROWS>) -> Self {
         board.cells
     }
 }
