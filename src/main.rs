@@ -22,7 +22,7 @@ pub fn play() {
     let mut ai = DFS::new();
 
     loop {
-        println!("{:?}", game);
+        println!("{}", game.board);
 
         // let mut input = String::new();
         // std::io::stdin().read_line(&mut input).unwrap();
@@ -39,7 +39,7 @@ pub fn play() {
 
         // let action: Direction = rand::random();
 
-        let timeout = Duration::from_secs_f64(0.1);
+        let timeout = Duration::from_secs_f64(0.2);
         let deadline = Instant::now() + timeout;
 
         let action = ai.act(&game.board, deadline);
@@ -55,11 +55,12 @@ pub fn play() {
         }
     }
 
-    println!("{:?}", game);
+    println!("{}", game.board);
 }
 
 pub fn benchmark() {
-    let board = [
+    let mut board;
+    board = [
         // BOARD
         [0, 1, 0, 0],
         [0, 0, 0, 0],
@@ -68,12 +69,21 @@ pub fn benchmark() {
     ]
     .into();
 
+    board = [
+        // BOARD
+        [3, 3, 1, 1],
+        [1, 9, 5, 0],
+        [10, 2, 7, 4],
+        [6, 1, 6, 8],
+    ]
+    .into();
+
     let mut ai = DFS::new();
 
     let start = Instant::now();
-    let deadline = start + Duration::from_secs_f64(12.5);
+    let deadline = start + Duration::from_secs_f64(2.5);
 
-    let result = ai.evaluate_by_depth(&board, 5, deadline);
+    let result = ai.evaluate_by_depth(&board, 8, deadline);
 
     println!("{:?}", start.elapsed());
     println!("{result:?}");

@@ -39,7 +39,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
     }
 
     pub fn heuristic(board: &Board<ROWS, COLS>) -> f64 {
-        board.count_empty() as f64 + 1000.
+        (board.count_empty() as f64 + 3.).powi(2)
     }
 
     fn evaluate_by_heuristic(board: &Board<ROWS, COLS>) -> EvaluationEntry {
@@ -71,8 +71,8 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
             _ => {
                 let entry = self
                     .find_best_action(board, depth - 1, deadline)
-                    .map(|(value, _)| EvaluationEntry { depth, value })
                     .ok()
+                    .map(|(value, _)| EvaluationEntry { depth, value })
                     .or_else(|| self.evaluation_cache.get(board).copied())
                     .unwrap_or(Self::evaluate_by_heuristic(board));
 
