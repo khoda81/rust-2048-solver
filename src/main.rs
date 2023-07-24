@@ -74,6 +74,9 @@ pub fn benchmark() {
     // fill cache for a more accurate benchmark
     ai.act(&board, Instant::now() + Duration::from_secs_f64(1.9));
 
+    let fill = (ai.evaluation_cache.len() * 100) as f64 / ai.evaluation_cache.cap().get() as f64;
+    println!("fill = {fill:?}%",);
+
     board = [
         // BOARD
         [3, 3, 1, 1],
@@ -90,6 +93,9 @@ pub fn benchmark() {
 
     println!("{:?}", start.elapsed());
     println!("{result:?}");
+
+    let fill = (ai.evaluation_cache.len() * 100) as f64 / ai.evaluation_cache.cap().get() as f64;
+    println!("fill = {fill:?}%",);
 }
 
 fn main() {

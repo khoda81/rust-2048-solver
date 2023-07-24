@@ -1,6 +1,5 @@
 use crate::board::{Board, Direction};
 use std::{
-    collections::HashMap,
     fmt,
     time::{Duration, Instant},
 };
@@ -12,7 +11,7 @@ pub struct EvaluationEntry {
 }
 
 pub struct DFS<const ROWS: usize, const COLS: usize> {
-    pub evaluation_cache: HashMap<Board<ROWS, COLS>, EvaluationEntry>,
+    pub evaluation_cache: lru::LruCache<Board<ROWS, COLS>, EvaluationEntry>,
 }
 #[derive(Debug)]
 pub struct TimeOut;
@@ -28,7 +27,7 @@ impl std::error::Error for TimeOut {}
 impl<const ROWS: usize, const COLS: usize> Default for DFS<ROWS, COLS> {
     fn default() -> Self {
         DFS {
-            evaluation_cache: HashMap::with_capacity(2048),
+            evaluation_cache: lru::LruCache::new(1000000.try_into().unwrap()),
         }
     }
 }
@@ -76,7 +75,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
                     .or_else(|| self.evaluation_cache.get(board).copied())
                     .unwrap_or(Self::evaluate_by_heuristic(board));
 
-                self.evaluation_cache.insert(board.clone(), entry);
+                self.evaluation_cache.put(board.clone(), entry);
 
                 entry
             }
