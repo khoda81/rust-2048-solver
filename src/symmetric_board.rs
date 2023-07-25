@@ -136,7 +136,15 @@ mod test_super {
 
     #[test]
     fn test_symmetry() {
-        let board = board::Board::from([[2, 1], [0, 0]]);
+        // let board = board::Board::from([[2, 1], [0, 0]]);
+        let board = board::Board::from([
+            // board
+            [1, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [2, 0, 0, 0],
+        ]);
+
         let sym_board = SymmetricBoard::from(board.clone());
         println!("{sym_board}");
     }

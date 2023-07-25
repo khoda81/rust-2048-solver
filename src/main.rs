@@ -74,8 +74,8 @@ pub fn benchmark() {
     // fill cache for a more accurate benchmark
     ai.act(&board, Instant::now() + Duration::from_secs_f64(1.9));
 
-    let fill = (ai.evaluation_cache.len() * 100) as f64 / ai.evaluation_cache.cap().get() as f64;
-    println!("fill = {fill:?}%",);
+    let fill = (ai.player_cache.len() * 100) as f64 / ai.player_cache.cap().get() as f64;
+    println!("fill = {fill:.1?}%",);
 
     board = [
         // BOARD
@@ -87,18 +87,18 @@ pub fn benchmark() {
     .into();
 
     let start = Instant::now();
-    let deadline = start + Duration::from_secs_f64(1.0);
 
-    let result = ai.evaluate_by_depth(&board, 8, deadline);
+    ai.deadline = start + Duration::from_secs_f64(1.0);
+    let result = ai.evaluate_for_player(&board, 8);
 
     println!("{:?}", start.elapsed());
     println!("{result:?}");
 
-    let fill = (ai.evaluation_cache.len() * 100) as f64 / ai.evaluation_cache.cap().get() as f64;
-    println!("fill = {fill:?}%",);
+    let fill = (ai.player_cache.len() * 100) as f64 / ai.player_cache.cap().get() as f64;
+    println!("fill = {fill:.1?}%",);
 }
 
 fn main() {
-    benchmark();
-    // play();
+    // benchmark();
+    play();
 }

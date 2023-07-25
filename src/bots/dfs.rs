@@ -4,30 +4,38 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct EvaluationEntry {
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct SearchResult<A> {
     pub depth: u32,
     pub value: f64,
+    pub action: A,
 }
 
-pub struct DFS<const ROWS: usize, const COLS: usize> {
-    pub evaluation_cache: lru::LruCache<Board<ROWS, COLS>, EvaluationEntry>,
-}
 #[derive(Debug)]
-pub struct TimeOut;
+pub enum SearchError {
+    TimeOut,
+}
 
-impl fmt::Display for TimeOut {
+impl fmt::Display for SearchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "reached deadline before finishing computation")
+        match self {
+            Self::TimeOut => write!(f, "reached deadline before finishing computation"),
+        }
     }
 }
 
-impl std::error::Error for TimeOut {}
+pub struct DFS<const ROWS: usize, const COLS: usize> {
+    pub player_cache: lru::LruCache<Board<ROWS, COLS>, SearchResult<Direction>>,
+    pub deadline: Instant,
+}
+
+impl std::error::Error for SearchError {}
 
 impl<const ROWS: usize, const COLS: usize> Default for DFS<ROWS, COLS> {
     fn default() -> Self {
         DFS {
-            evaluation_cache: lru::LruCache::new(1000000.try_into().unwrap()),
+            player_cache: lru::LruCache::new(1000000.try_into().unwrap()),
+            deadline: Instant::now(),
         }
     }
 }
@@ -37,124 +45,119 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         Self::default()
     }
 
+    pub fn add_heuristic_sample(board: &Board<ROWS, COLS>, depth: u32, eval: f64) {
+        // TODO
+    }
+
     pub fn heuristic(board: &Board<ROWS, COLS>) -> f64 {
         2_usize.pow((board.count_empty() + 1) as u32) as f64
     }
 
-    fn evaluate_by_heuristic(board: &Board<ROWS, COLS>) -> EvaluationEntry {
-        EvaluationEntry {
+    fn act_by_heuristic(board: &Board<ROWS, COLS>) -> SearchResult<Direction> {
+        SearchResult {
             depth: 0,
             value: Self::heuristic(board),
+            // action without any search
+            action: Direction::Up,
         }
     }
 
-    pub fn evaluate_by_depth(
+    pub fn evaluate_for_player(
         &mut self,
         board: &Board<ROWS, COLS>,
         depth: u32,
-        deadline: Instant,
-    ) -> EvaluationEntry {
-        if depth == 0 {
-            return Self::evaluate_by_heuristic(board);
-        }
+    ) -> Result<SearchResult<Direction>, SearchError> {
+        let mut result = SearchResult {
+            depth: u32::MAX,
+            value: 0.,
+            // action on terminal states
+            action: Direction::Up,
+        };
 
         if board.is_lost() {
-            return EvaluationEntry {
-                depth: u32::MAX,
-                value: 0.,
-            };
+            return Ok(result);
         }
 
-        match self.evaluation_cache.get(board) {
-            Some(entry) if entry.depth >= depth => *entry,
-            _ => {
-                let entry = self
-                    .find_best_action(board, depth - 1, deadline)
-                    .ok()
-                    .map(|(value, _)| EvaluationEntry { depth, value })
-                    .or_else(|| self.evaluation_cache.get(board).copied())
-                    .unwrap_or(Self::evaluate_by_heuristic(board));
+        if depth == 0 {
+            return Ok(Self::act_by_heuristic(board));
+        }
 
-                self.evaluation_cache.put(board.clone(), entry);
-
-                entry
+        if let Some(result) = self.player_cache.get(board) {
+            if result.depth >= depth {
+                return Ok(*result);
             }
         }
-    }
 
-    pub fn find_best_action(
-        &mut self,
-        board: &Board<ROWS, COLS>,
-        depth: u32,
-        deadline: Instant,
-    ) -> Result<(f64, Direction), TimeOut> {
-        let mut best_action_value = (f64::NEG_INFINITY, Direction::Up);
-
-        for direction in [
+        for action in [
             Direction::Up,
             Direction::Down,
             Direction::Left,
             Direction::Right,
         ] {
             let mut new_board = board.clone();
-            let moved = new_board.swipe(direction);
+            let moved = new_board.swipe(action);
 
             if !moved {
                 continue;
             }
 
-            let mut numerator = 0.;
-            let mut denominator = 0.;
+            let value = self.evaluate_for_opponent(&new_board, depth - 1)?;
 
-            for (new_board, weight) in new_board.spawns() {
-                // TODO optimize
-                if Instant::now() >= deadline {
-                    return Err(TimeOut);
+            if result.value < value {
+                result = SearchResult {
+                    depth,
+                    value,
+                    action,
                 }
-
-                let evaluation = self.evaluate_by_depth(&new_board, depth, deadline).value;
-
-                numerator += weight * evaluation;
-                denominator += weight;
-            }
-
-            let value = numerator / denominator;
-            if value > best_action_value.0 {
-                best_action_value = (value, direction);
             }
         }
 
-        Ok(best_action_value)
+        self.player_cache.put(board.clone(), result);
+        Ok(result)
+    }
+
+    pub fn evaluate_for_opponent(
+        &mut self,
+        board: &Board<ROWS, COLS>,
+        depth: u32,
+    ) -> Result<f64, SearchError> {
+        if Instant::now() >= self.deadline {
+            return Err(SearchError::TimeOut);
+        }
+
+        let mut numerator = 0.;
+        let mut denominator = 0.;
+        let spawns = board.spawns();
+
+        for (new_board, weight) in spawns {
+            let evaluation = self.evaluate_for_player(&new_board, depth)?.value;
+
+            numerator += weight * evaluation;
+            denominator += weight;
+        }
+
+        Ok(numerator / denominator)
     }
 
     pub fn evaluate_until(
         &mut self,
         board: &Board<ROWS, COLS>,
         deadline: Instant,
-    ) -> EvaluationEntry {
+    ) -> SearchResult<Direction> {
         // pessimistic deadline to end early instead of late
-        let deadline = deadline - Duration::from_micros(100);
+        self.deadline = deadline - Duration::from_micros(100);
 
-        let mut evaluation = self.evaluate_by_depth(board, 1, deadline);
+        let mut result = Self::act_by_heuristic(board);
 
-        while Instant::now() < deadline {
-            let search_depth = evaluation.depth + 1;
-            let new_evaluation = self.evaluate_by_depth(board, search_depth, deadline);
-            if new_evaluation.depth > evaluation.depth {
-                evaluation = new_evaluation;
-            }
+        while let Ok(new_result) = self.evaluate_for_player(board, result.depth + 1) {
+            result = new_result;
         }
 
-        println!("{evaluation:.2?}");
-        evaluation
+        println!("{result:.2?}");
+        result
     }
 
     pub fn act(&mut self, board: &Board<ROWS, COLS>, deadline: Instant) -> Direction {
-        self.evaluate_until(board, deadline);
-        let (_value, action) = self
-            .find_best_action(board, 1, Instant::now() + Duration::from_millis(100))
-            .unwrap();
-
-        action
+        self.evaluate_until(board, deadline).action
     }
 }
