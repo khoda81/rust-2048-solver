@@ -130,6 +130,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         Ok(result)
     }
 
+    #[inline(always)]
     pub fn evaluate_for_opponent(
         &mut self,
         board: &Board<ROWS, COLS>,
