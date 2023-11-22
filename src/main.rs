@@ -8,7 +8,7 @@ use std::{
 
 use rust_2048_solver::{board::Direction, bots::dfs::DFS, game::Game};
 
-pub fn play() {
+fn main() {
     let mut game = Game::<4, 4>::create();
     // game.board = [
     //     // BOARD
@@ -56,49 +56,4 @@ pub fn play() {
     }
 
     println!("{}", game.board);
-}
-
-pub fn benchmark() {
-    let mut ai = DFS::new();
-
-    let mut board;
-    board = [
-        // BOARD
-        [3, 3, 7, 1],
-        [0, 9, 5, 0],
-        [10, 0, 7, 4],
-        [6, 1, 6, 8],
-    ]
-    .into();
-
-    // fill cache for a more accurate benchmark
-    ai.act(&board, Instant::now() + Duration::from_secs_f64(1.9));
-
-    let fill = (ai.player_cache.len() * 100) as f64 / ai.player_cache.cap().get() as f64;
-    println!("fill = {fill:.1?}%",);
-
-    board = [
-        // BOARD
-        [3, 3, 1, 1],
-        [1, 9, 5, 0],
-        [10, 2, 7, 4],
-        [6, 1, 6, 8],
-    ]
-    .into();
-
-    let start = Instant::now();
-
-    ai.deadline = start + Duration::from_secs_f64(1.0);
-    let result = ai.evaluate_for_player(&board, 8);
-
-    println!("{:?}", start.elapsed());
-    println!("{result:?}");
-
-    let fill = (ai.player_cache.len() * 100) as f64 / ai.player_cache.cap().get() as f64;
-    println!("fill = {fill:.1?}%",);
-}
-
-fn main() {
-    // benchmark();
-    play();
 }

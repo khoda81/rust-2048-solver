@@ -1,8 +1,11 @@
 use crate::board::{Board, Direction};
 use std::{
+    collections::HashMap,
     fmt,
     time::{Duration, Instant},
 };
+
+use super::model::Model;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct SearchResult<A> {
@@ -24,9 +27,14 @@ impl fmt::Display for SearchError {
     }
 }
 
+fn heuristic(empty_count: usize) -> f64 {
+    2_usize.pow((empty_count + 1) as u32) as f64
+}
+
 pub struct DFS<const ROWS: usize, const COLS: usize> {
     pub player_cache: lru::LruCache<Board<ROWS, COLS>, SearchResult<Direction>>,
     pub deadline: Instant,
+    // pub model: Model<Board<ROWS, COLS>>,
 }
 
 impl std::error::Error for SearchError {}
@@ -36,6 +44,10 @@ impl<const ROWS: usize, const COLS: usize> Default for DFS<ROWS, COLS> {
         DFS {
             player_cache: lru::LruCache::new(1000000.try_into().unwrap()),
             deadline: Instant::now(),
+            // model: Model {
+            //     evaluation_memory: HashMap::new(),
+            //     heuristic,
+            // },
         }
     }
 }
@@ -50,7 +62,9 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
     }
 
     pub fn heuristic(board: &Board<ROWS, COLS>) -> f64 {
-        2_usize.pow((board.count_empty() + 1) as u32) as f64
+        let empty_count = board.count_empty();
+
+        heuristic(empty_count)
     }
 
     fn act_by_heuristic(board: &Board<ROWS, COLS>) -> SearchResult<Direction> {
