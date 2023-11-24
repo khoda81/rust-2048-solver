@@ -5,7 +5,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::model::Model;
+use super::{
+    heuristic::{self, get_lookup},
+    model::Model,
+};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct SearchResult<A> {
@@ -27,14 +30,10 @@ impl fmt::Display for SearchError {
     }
 }
 
-fn heuristic(empty_count: usize) -> f64 {
-    2_usize.pow((empty_count + 1) as u32) as f64
-}
-
 pub struct DFS<const ROWS: usize, const COLS: usize> {
     pub player_cache: lru::LruCache<Board<ROWS, COLS>, SearchResult<Direction>>,
     pub deadline: Instant,
-    // pub model: Model<Board<ROWS, COLS>>,
+    pub model: Model<heuristic::PreprocessedBoard>,
 }
 
 impl std::error::Error for SearchError {}
@@ -44,10 +43,7 @@ impl<const ROWS: usize, const COLS: usize> Default for DFS<ROWS, COLS> {
         DFS {
             player_cache: lru::LruCache::new(1000000.try_into().unwrap()),
             deadline: Instant::now(),
-            // model: Model {
-            //     evaluation_memory: HashMap::new(),
-            //     heuristic,
-            // },
+            model: Model::new(),
         }
     }
 }
@@ -57,20 +53,32 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         Self::default()
     }
 
-    pub fn add_heuristic_sample(board: &Board<ROWS, COLS>, depth: u32, eval: f64) {
-        // TODO
+    fn preprocess_for_model(board: &Board<ROWS, COLS>) -> heuristic::PreprocessedBoard {
+        (
+            board.count_empty() as u32,
+            *board.cells.iter().flatten().max().unwrap() as u32,
+        )
     }
 
-    pub fn heuristic(board: &Board<ROWS, COLS>) -> f64 {
-        let empty_count = board.count_empty();
-
-        heuristic(empty_count)
+    pub fn add_heuristic_sample(&mut self, board: &Board<ROWS, COLS>, priority: u32, eval: f64) {
+        self.model
+            .learn(Self::preprocess_for_model(board), eval, priority)
     }
 
-    fn act_by_heuristic(board: &Board<ROWS, COLS>) -> SearchResult<Direction> {
+    pub fn heuristic(&self, board: &Board<ROWS, COLS>) -> f64 {
+        // Preprocess the board for the model
+        let preprocessed = Self::preprocess_for_model(board);
+
+        self.model
+            .evaluate(&preprocessed)
+            .map(|eval| eval.get_value())
+            .unwrap_or_else(|| heuristic::heuristic(preprocessed))
+    }
+
+    fn act_by_heuristic(&self, board: &Board<ROWS, COLS>) -> SearchResult<Direction> {
         SearchResult {
             depth: 0,
-            value: Self::heuristic(board),
+            value: self.heuristic(board),
             // action without any search
             action: Direction::Up,
         }
@@ -81,19 +89,20 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         board: &Board<ROWS, COLS>,
         depth: u32,
     ) -> Result<SearchResult<Direction>, SearchError> {
-        let mut result = SearchResult {
-            depth: u32::MAX,
+        let mut best_result = SearchResult {
+            depth,
             value: 0.,
             // action on terminal states
             action: Direction::Up,
         };
 
         if board.is_lost() {
-            return Ok(result);
+            best_result.depth = u32::MAX;
+            return Ok(best_result);
         }
 
         if depth == 0 {
-            return Ok(Self::act_by_heuristic(board));
+            return Ok(self.act_by_heuristic(board));
         }
 
         if let Some(result) = self.player_cache.get(board) {
@@ -109,25 +118,30 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
             Direction::Right,
         ] {
             let mut new_board = board.clone();
-            let moved = new_board.swipe(action);
 
-            if !moved {
+            if !new_board.swipe(action) {
                 continue;
             }
 
-            let value = self.evaluate_for_opponent(&new_board, depth - 1)?;
+            // TODO replace with the actual reward
+            let reward = 1.0;
+            let value = self.evaluate_for_opponent(&new_board, depth - 1)? + reward;
 
-            if result.value < value {
-                result = SearchResult {
-                    depth,
-                    value,
-                    action,
-                }
+            if best_result.value <= value {
+                best_result.value = value;
+                best_result.action = action;
             }
         }
 
-        self.player_cache.put(board.clone(), result);
-        Ok(result)
+        self.player_cache.put(board.clone(), best_result);
+        self.add_heuristic_sample(
+            board,
+            depth,
+            // 0,
+            best_result.value,
+        );
+
+        Ok(best_result)
     }
 
     #[inline(always)]
@@ -162,10 +176,13 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         // pessimistic deadline to end early instead of late
         self.deadline = deadline - Duration::from_micros(100);
 
-        let mut result = Self::act_by_heuristic(board);
+        let mut result = self.act_by_heuristic(board);
 
         while let Ok(new_result) = self.evaluate_for_player(board, result.depth + 1) {
             result = new_result;
+            if result.depth == u32::MAX {
+                break;
+            }
         }
 
         println!("{result:.2?}");

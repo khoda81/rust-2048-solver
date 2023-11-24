@@ -1,6 +1,10 @@
 #![allow(unused_imports)]
 
-use rust_2048_solver::board::Board;
+use itertools::Itertools;
+use rust_2048_solver::{
+    board::Board,
+    bots::heuristic::{self},
+};
 use std::{
     collections::{hash_map::Entry, HashMap},
     time::{Duration, Instant},
@@ -9,6 +13,8 @@ use std::{
 use rust_2048_solver::{board::Direction, bots::dfs::DFS, game::Game};
 
 fn main() {
+    show_map(heuristic::get_lookup());
+
     let mut game = Game::<4, 4>::create();
     // game.board = [
     //     // BOARD
@@ -24,36 +30,35 @@ fn main() {
     loop {
         println!("{}", game.board);
 
-        // let mut input = String::new();
-        // std::io::stdin().read_line(&mut input).unwrap();
-        // input = input.trim().to_lowercase();
-
-        // let action = match input.as_str() {
-        //     "w" => Direction::Up,
-        //     "a" => Direction::Left,
-        //     "s" => Direction::Down,
-        //     "d" => Direction::Right,
-        //     "q" => break,
-        //     _ => continue,
-        // };
-
-        // let action: Direction = rand::random();
-
         let timeout = Duration::from_secs_f64(0.2);
         let deadline = Instant::now() + timeout;
 
         let action = ai.act(&game.board, deadline);
 
-        let miss = deadline.elapsed();
-        if !miss.is_zero() {
-            println!("missed: {miss:?}");
-        }
+        // let miss = deadline.elapsed();
+        // if !miss.is_zero() {
+        //     println!("missed: {miss:?}");
+        // }
 
-        println!("{action:?}");
-        if game.step(action) {
+        println!("{action}");
+        if !game.step(action) {
             break;
         }
     }
 
     println!("{}", game.board);
+    let mut new_lookup = heuristic::get_lookup();
+
+    for (key, value) in ai.model.evaluation_memory.into_iter() {
+        new_lookup.insert(key, value.get_value());
+    }
+
+    show_map(new_lookup)
+}
+
+fn show_map<K: std::cmp::Ord + std::fmt::Debug + Clone, V: std::fmt::Display>(map: HashMap<K, V>) {
+    for (key, value) in map.into_iter().sorted_by_key(|(key, _eval)| key.clone()) {
+        println!("map.insert({key:?}, {value});");
+        // println!("data[{key:?}] = {value}");
+    }
 }

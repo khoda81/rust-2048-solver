@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, Write};
 
 use rand::{
     distributions::{Distribution, Standard, WeightedIndex},
@@ -23,6 +23,19 @@ impl Distribution<Direction> for Standard {
             2 => Direction::Left,
             _ => Direction::Right,
         }
+    }
+}
+
+impl fmt::Display for Direction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let arrow = match self {
+            Direction::Up => '↑',
+            Direction::Down => '↓',
+            Direction::Left => '←',
+            Direction::Right => '→',
+        };
+
+        f.write_char(arrow)
     }
 }
 
@@ -149,16 +162,29 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
 
 impl<const COLS: usize, const ROWS: usize> fmt::Display for Board<COLS, ROWS> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for row in self.cells.iter() {
-            for cell in row.iter() {
-                if cell == &0 {
-                    write!(f, " . ")?;
-                } else {
-                    write!(f, "{cell:2?} ")?;
-                }
+        let mut iter = self.cells.iter();
+        if let Some(last_row) = iter.next_back() {
+            for row in iter {
+                row.iter().try_for_each(|cell| {
+                    if cell == &0 {
+                        write!(f, " . ")
+                    } else {
+                        write!(f, "{cell:2?} ")
+                    }
+                })?;
+
+                writeln!(f)?;
             }
-            writeln!(f)?;
+
+            last_row.iter().try_for_each(|cell| {
+                if cell == &0 {
+                    write!(f, " . ")
+                } else {
+                    write!(f, "{cell:2?} ")
+                }
+            })?;
         }
+
         Ok(())
     }
 }

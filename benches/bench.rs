@@ -8,7 +8,7 @@ pub fn add_two(a: i32) -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant, UNIX_EPOCH};
+    use std::time::{Duration, Instant};
 
     use super::*;
     use rust_2048_solver::{

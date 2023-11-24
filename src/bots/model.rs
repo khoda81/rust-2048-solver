@@ -2,47 +2,139 @@ use std::{cmp, collections::HashMap, hash};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct EvaluationEntry {
-    value_sum: f64,
-    num_samples: u32,
-    level: u32,
+    pub value_sum: f64,
+    pub num_samples: u32,
+    pub priority: u32,
 }
 
-pub struct Model<Obs, F: Fn(&Obs) -> f64> {
-    pub evaluation_memory: HashMap<Obs, EvaluationEntry>,
-    pub heuristic: F,
-}
-
-impl<Obs: hash::Hash + cmp::Eq, F: Fn(&Obs) -> f64> Model<Obs, F> {
-    pub fn evaluate(&self, obs: &Obs) -> f64 {
-        let entry = self
-            .evaluation_memory
-            .get(obs)
-            .map(|entry| entry.value_sum / entry.num_samples as f64);
-
-        entry.unwrap_or_else(|| (self.heuristic)(obs))
+impl EvaluationEntry {
+    pub fn update_with(&mut self, value: f64, priority: u32) {
+        match priority.cmp(&self.priority) {
+            cmp::Ordering::Less => {}
+            cmp::Ordering::Equal => {
+                // Add value to samples
+                self.num_samples += 1;
+                self.value_sum += value;
+            }
+            cmp::Ordering::Greater => {
+                // New sample overrides previous values
+                self.num_samples = 1;
+                self.value_sum = value;
+                self.priority = priority;
+            }
+        }
     }
 
-    pub fn learn(&mut self, obs: Obs, value: f64, level: u32) {
-        let my_entry = EvaluationEntry {
-            value_sum: value,
-            num_samples: 1,
-            level,
+    pub fn get_value(&self) -> f64 {
+        self.value_sum / self.num_samples as f64
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Model<K> {
+    pub evaluation_memory: HashMap<K, EvaluationEntry>,
+}
+
+impl<K> Model<K> {
+    pub fn new() -> Self {
+        Self {
+            evaluation_memory: HashMap::new(),
+        }
+    }
+}
+
+impl<K: hash::Hash + cmp::Eq> Model<K> {
+    pub fn evaluate(&self, key: &K) -> Option<&EvaluationEntry> {
+        self.evaluation_memory.get(key)
+    }
+
+    pub fn learn(&mut self, key: K, value: f64, priority: u32) {
+        self.evaluation_memory
+            .entry(key)
+            .or_default()
+            .update_with(value, priority);
+    }
+}
+#[cfg(test)]
+mod test_model {
+    use super::*;
+
+    #[test]
+    fn test_evaluation_entry_update() {
+        let mut entry = EvaluationEntry::default();
+        entry.update_with(5.0, 1);
+
+        assert_eq!(entry.num_samples, 1);
+        assert_eq!(entry.value_sum, 5.0);
+        assert_eq!(entry.priority, 1);
+
+        entry.update_with(8.0, 2);
+
+        assert_eq!(entry.num_samples, 1);
+        assert_eq!(entry.value_sum, 8.0);
+        assert_eq!(entry.priority, 2);
+
+        entry.update_with(3.0, 2);
+
+        assert_eq!(entry.num_samples, 2);
+        assert_eq!(entry.value_sum, 11.0);
+        assert_eq!(entry.priority, 2);
+    }
+
+    #[test]
+    fn test_evaluation_entry_get_value() {
+        let entry = EvaluationEntry {
+            value_sum: 15.0,
+            num_samples: 3,
+            priority: 2,
         };
 
-        let new_entry = self
-            .evaluation_memory
-            .get(&obs)
-            .and_then(|entry| match entry.level.cmp(&level) {
-                cmp::Ordering::Less => None,
-                cmp::Ordering::Equal => Some(EvaluationEntry {
-                    value_sum: my_entry.value_sum + value,
-                    num_samples: my_entry.num_samples + 1,
-                    level,
-                }),
-                cmp::Ordering::Greater => Some(*entry),
-            })
-            .unwrap_or(my_entry);
+        assert_eq!(entry.get_value(), 5.0);
+    }
 
-        self.evaluation_memory.insert(obs, new_entry);
+    #[test]
+    fn test_model_evaluate() {
+        let mut model = Model::new();
+        let obs = "observation";
+
+        assert_eq!(model.evaluate(&obs), None);
+
+        model.learn(obs, 8.0, 2);
+
+        if let Some(entry) = model.evaluate(&obs) {
+            assert_eq!(entry.get_value(), 8.0);
+            assert_eq!(entry.num_samples, 1);
+            assert_eq!(entry.priority, 2);
+        } else {
+            panic!("Expected Some, got None.");
+        }
+    }
+
+    #[test]
+    fn test_model_learn() {
+        let mut model = Model::new();
+        let obs1 = "observation1";
+        let obs2 = "observation2";
+
+        model.learn(obs1, 5.0, 1);
+
+        if let Some(entry) = model.evaluate(&obs1) {
+            assert_eq!(entry.get_value(), 5.0);
+            assert_eq!(entry.num_samples, 1);
+            assert_eq!(entry.priority, 1);
+        } else {
+            panic!("Expected Some, got None.");
+        }
+
+        // Learning a different observation
+        model.learn(obs2, 10.0, 3);
+
+        if let Some(entry) = model.evaluate(&obs2) {
+            assert_eq!(entry.get_value(), 10.0);
+            assert_eq!(entry.num_samples, 1);
+            assert_eq!(entry.priority, 3);
+        } else {
+            panic!("Expected Some, got None.");
+        }
     }
 }
