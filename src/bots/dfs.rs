@@ -56,9 +56,16 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         )
     }
 
-    pub fn add_heuristic_sample(&mut self, board: &Board<ROWS, COLS>, priority: u16, eval: f64) {
+    pub fn train_model(&mut self, board: &Board<ROWS, COLS>, value: f32, depth: u16) {
+        let value = value as f64;
+        let weight = 2.0_f64.powi(depth.into());
+
+        let priority = 0;
+        let prerocessed_board = Self::preprocess_for_model(board);
+        let decay = 0.999;
+
         self.model
-            .learn(Self::preprocess_for_model(board), eval, priority)
+            .weighted_learn_with_decay(prerocessed_board, value, weight, priority, decay)
     }
 
     pub fn heuristic(&self, board: &Board<ROWS, COLS>) -> f64 {
@@ -67,7 +74,6 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
 
         self.model
             .evaluate(&preprocessed)
-            .map(|eval| eval.get_value())
             .unwrap_or_else(|| heuristic::heuristic(preprocessed))
     }
 
@@ -130,12 +136,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         }
 
         self.player_cache.put(board.clone(), best_result);
-        self.add_heuristic_sample(
-            board,
-            depth,
-            // 0,
-            best_result.value as f64,
-        );
+        self.train_model(board, best_result.value, depth);
 
         Ok(best_result)
     }
@@ -179,8 +180,9 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
             .checked_add(1)
             .and_then(|new_depth| self.evaluate_for_player(board, new_depth).ok())
         {
-            // println!("{new_result:.2?}");
             result = new_result;
+            // TODO implement logging
+            println!("{result:.2?}");
         }
 
         result

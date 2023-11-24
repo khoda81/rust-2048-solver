@@ -13,7 +13,7 @@ use std::{
 use rust_2048_solver::{board::Direction, bots::dfs::DFS, game::Game};
 
 fn main() {
-    show_map(heuristic::get_lookup());
+    // show_map(heuristic::get_lookup());
 
     let mut game = Game::<4, 4>::create();
     // game.board = [
@@ -30,7 +30,7 @@ fn main() {
     loop {
         println!("{}", game.board);
 
-        let timeout = Duration::from_secs_f64(0.1);
+        let timeout = Duration::from_secs_f64(0.2);
         let deadline = Instant::now() + timeout;
 
         let action = ai.act(&game.board, deadline);
@@ -40,13 +40,7 @@ fn main() {
             println!("missed: {miss:?}");
         }
 
-        // let mut new_lookup = heuristic::get_lookup().clone();
-
-        // for (key, value) in ai.model.evaluation_memory.iter() {
-        //     new_lookup.insert(*key, value.get_value());
-        // }
-
-        // show_map(&new_lookup);
+        // print_lookup(&ai);
 
         println!("{action}");
         if !game.step(action) {
@@ -55,18 +49,25 @@ fn main() {
     }
 
     println!("{}", game.board);
-    let mut new_lookup = heuristic::get_lookup().clone();
-
-    for (key, value) in ai.model.evaluation_memory.into_iter() {
-        new_lookup.insert(key, value.get_value());
-    }
-
-    // show_map(&new_lookup);
+    print_lookup(&ai);
 }
 
-fn show_map<K: std::cmp::Ord + std::fmt::Debug, V: std::fmt::Debug>(map: &HashMap<K, V>) {
-    for (key, value) in map.iter().sorted_by_key(|(key, _eval)| *key) {
-        println!("map.insert({key:?}, {value:?});");
+fn print_lookup(ai: &DFS<4, 4>) {
+    let mut new_lookup = heuristic::get_lookup().clone();
+
+    for (key, eval) in ai.model.evaluation_memory.iter() {
+        new_lookup.insert(*key, eval.value.mean());
+    }
+
+    show_map(&new_lookup);
+}
+
+fn show_map<V: std::fmt::Debug>(map: &HashMap<heuristic::PreprocessedBoard, V>) {
+    for (key, value) in map
+        .iter()
+        .sorted_by_key(|(&(empty, max), _eval)| (max, empty))
+    {
+        println!("map.insert({key:2?}, {value:?});");
         // println!("data[{key:?}] = {value}");
     }
 }
