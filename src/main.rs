@@ -30,22 +30,23 @@ fn main() {
     loop {
         println!("{}", game.board);
 
-        let timeout = Duration::from_secs_f64(10.0);
+        let timeout = Duration::from_secs_f64(0.1);
         let deadline = Instant::now() + timeout;
 
         let action = ai.act(&game.board, deadline);
 
-        // let miss = deadline.elapsed();
-        // if !miss.is_zero() {
-        //     println!("missed: {miss:?}");
-        // }
-        let mut new_lookup = heuristic::get_lookup().clone();
-
-        for (key, value) in ai.model.evaluation_memory.iter() {
-            new_lookup.insert(*key, value.get_value());
+        let miss = deadline.elapsed();
+        if !miss.is_zero() {
+            println!("missed: {miss:?}");
         }
 
-        show_map(&new_lookup);
+        // let mut new_lookup = heuristic::get_lookup().clone();
+
+        // for (key, value) in ai.model.evaluation_memory.iter() {
+        //     new_lookup.insert(*key, value.get_value());
+        // }
+
+        // show_map(&new_lookup);
 
         println!("{action}");
         if !game.step(action) {
@@ -60,7 +61,7 @@ fn main() {
         new_lookup.insert(key, value.get_value());
     }
 
-    show_map(&new_lookup);
+    // show_map(&new_lookup);
 }
 
 fn show_map<K: std::cmp::Ord + std::fmt::Debug, V: std::fmt::Debug>(map: &HashMap<K, V>) {

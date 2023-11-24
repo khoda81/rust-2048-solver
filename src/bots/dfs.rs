@@ -37,7 +37,7 @@ impl std::error::Error for SearchError {}
 impl<const ROWS: usize, const COLS: usize> Default for DFS<ROWS, COLS> {
     fn default() -> Self {
         DFS {
-            player_cache: lru::LruCache::new(10000000.try_into().unwrap()),
+            player_cache: lru::LruCache::new(1000000.try_into().unwrap()),
             deadline: Instant::now(),
             model: Model::new(),
         }
@@ -174,13 +174,13 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
 
         let mut result = self.act_by_heuristic(board);
 
-        while let Ok(new_result) = self.evaluate_for_player(board, result.depth + 1) {
-            println!("{new_result:.2?}");
+        while let Some(new_result) = result
+            .depth
+            .checked_add(1)
+            .and_then(|new_depth| self.evaluate_for_player(board, new_depth).ok())
+        {
+            // println!("{new_result:.2?}");
             result = new_result;
-
-            if result.depth == u16::MAX {
-                break;
-            }
         }
 
         result

@@ -162,31 +162,29 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
 
 impl<const COLS: usize, const ROWS: usize> fmt::Display for Board<COLS, ROWS> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut iter = self.cells.iter();
-        if let Some(last_row) = iter.next_back() {
-            for row in iter {
-                row.iter().try_for_each(|cell| {
-                    if cell == &0 {
-                        write!(f, " . ")
-                    } else {
-                        write!(f, "{cell:2?} ")
-                    }
-                })?;
+        let mut iter = self.cells.iter().peekable();
 
+        while let Some(row) = iter.next() {
+            format_row(row, f)?;
+            if iter.peek().is_some() {
                 writeln!(f)?;
             }
-
-            last_row.iter().try_for_each(|cell| {
-                if cell == &0 {
-                    write!(f, " . ")
-                } else {
-                    write!(f, "{cell:2?} ")
-                }
-            })?;
         }
 
         Ok(())
     }
+}
+
+fn format_row(last_row: &[u8], f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    last_row.iter().try_for_each(|cell| {
+        f.write_char(match cell {
+            0 => b'.',
+            1..=9 => b'0' + cell,
+            _ => cell - 10 + b'a',
+        } as char)?;
+
+        f.write_char(' ')
+    })
 }
 
 impl<const COLS: usize, const ROWS: usize> From<[[u8; COLS]; ROWS]> for Board<COLS, ROWS> {
