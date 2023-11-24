@@ -1,14 +1,10 @@
 use crate::board::{Board, Direction};
 use std::{
-    collections::HashMap,
     fmt,
     time::{Duration, Instant},
 };
 
-use super::{
-    heuristic::{self, get_lookup},
-    model::Model,
-};
+use super::{heuristic, model::Model};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct SearchResult<A> {
@@ -41,7 +37,7 @@ impl std::error::Error for SearchError {}
 impl<const ROWS: usize, const COLS: usize> Default for DFS<ROWS, COLS> {
     fn default() -> Self {
         DFS {
-            player_cache: lru::LruCache::new(1000000.try_into().unwrap()),
+            player_cache: lru::LruCache::new(10000000.try_into().unwrap()),
             deadline: Instant::now(),
             model: Model::new(),
         }
@@ -179,13 +175,14 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         let mut result = self.act_by_heuristic(board);
 
         while let Ok(new_result) = self.evaluate_for_player(board, result.depth + 1) {
+            println!("{new_result:.2?}");
             result = new_result;
+
             if result.depth == u32::MAX {
                 break;
             }
         }
 
-        println!("{result:.2?}");
         result
     }
 

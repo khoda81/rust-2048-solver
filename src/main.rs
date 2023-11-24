@@ -30,7 +30,7 @@ fn main() {
     loop {
         println!("{}", game.board);
 
-        let timeout = Duration::from_secs_f64(0.2);
+        let timeout = Duration::from_secs_f64(10.0);
         let deadline = Instant::now() + timeout;
 
         let action = ai.act(&game.board, deadline);
@@ -39,6 +39,13 @@ fn main() {
         // if !miss.is_zero() {
         //     println!("missed: {miss:?}");
         // }
+        let mut new_lookup = heuristic::get_lookup().clone();
+
+        for (key, value) in ai.model.evaluation_memory.iter() {
+            new_lookup.insert(*key, value.get_value());
+        }
+
+        show_map(&new_lookup);
 
         println!("{action}");
         if !game.step(action) {
@@ -47,18 +54,18 @@ fn main() {
     }
 
     println!("{}", game.board);
-    let mut new_lookup = heuristic::get_lookup();
+    let mut new_lookup = heuristic::get_lookup().clone();
 
     for (key, value) in ai.model.evaluation_memory.into_iter() {
         new_lookup.insert(key, value.get_value());
     }
 
-    show_map(new_lookup)
+    show_map(&new_lookup);
 }
 
-fn show_map<K: std::cmp::Ord + std::fmt::Debug + Clone, V: std::fmt::Display>(map: HashMap<K, V>) {
-    for (key, value) in map.into_iter().sorted_by_key(|(key, _eval)| key.clone()) {
-        println!("map.insert({key:?}, {value});");
+fn show_map<K: std::cmp::Ord + std::fmt::Debug, V: std::fmt::Debug>(map: &HashMap<K, V>) {
+    for (key, value) in map.iter().sorted_by_key(|(key, _eval)| *key) {
+        println!("map.insert({key:?}, {value:?});");
         // println!("data[{key:?}] = {value}");
     }
 }
