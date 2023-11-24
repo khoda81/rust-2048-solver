@@ -1,14 +1,14 @@
 use std::{cmp, collections::HashMap, hash};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
-pub struct EvaluationEntry {
+pub struct EvaluationEntry<P> {
     pub value_sum: f64,
     pub num_samples: u32,
-    pub priority: u32,
+    pub priority: P,
 }
 
-impl EvaluationEntry {
-    pub fn update_with(&mut self, value: f64, priority: u32) {
+impl<P: Ord> EvaluationEntry<P> {
+    pub fn update_with(&mut self, value: f64, priority: P) {
         match priority.cmp(&self.priority) {
             cmp::Ordering::Less => {}
             cmp::Ordering::Equal => {
@@ -31,11 +31,11 @@ impl EvaluationEntry {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct Model<K> {
-    pub evaluation_memory: HashMap<K, EvaluationEntry>,
+pub struct Model<K, P> {
+    pub evaluation_memory: HashMap<K, EvaluationEntry<P>>,
 }
 
-impl<K> Model<K> {
+impl<K, P> Model<K, P> {
     pub fn new() -> Self {
         Self {
             evaluation_memory: HashMap::new(),
@@ -43,12 +43,12 @@ impl<K> Model<K> {
     }
 }
 
-impl<K: hash::Hash + cmp::Eq> Model<K> {
-    pub fn evaluate(&self, key: &K) -> Option<&EvaluationEntry> {
+impl<K: hash::Hash + cmp::Eq, P: Default + Ord> Model<K, P> {
+    pub fn evaluate(&self, key: &K) -> Option<&EvaluationEntry<P>> {
         self.evaluation_memory.get(key)
     }
 
-    pub fn learn(&mut self, key: K, value: f64, priority: u32) {
+    pub fn learn(&mut self, key: K, value: f64, priority: P) {
         self.evaluation_memory
             .entry(key)
             .or_default()

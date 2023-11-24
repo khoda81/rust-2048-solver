@@ -8,8 +8,8 @@ use super::{heuristic, model::Model};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct SearchResult<A> {
-    pub depth: u32,
-    pub value: f64,
+    pub depth: u16,
+    pub value: f32,
     pub action: A,
 }
 
@@ -29,7 +29,7 @@ impl fmt::Display for SearchError {
 pub struct DFS<const ROWS: usize, const COLS: usize> {
     pub player_cache: lru::LruCache<Board<ROWS, COLS>, SearchResult<Direction>>,
     pub deadline: Instant,
-    pub model: Model<heuristic::PreprocessedBoard>,
+    pub model: Model<heuristic::PreprocessedBoard, u16>,
 }
 
 impl std::error::Error for SearchError {}
@@ -56,7 +56,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         )
     }
 
-    pub fn add_heuristic_sample(&mut self, board: &Board<ROWS, COLS>, priority: u32, eval: f64) {
+    pub fn add_heuristic_sample(&mut self, board: &Board<ROWS, COLS>, priority: u16, eval: f64) {
         self.model
             .learn(Self::preprocess_for_model(board), eval, priority)
     }
@@ -74,7 +74,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
     fn act_by_heuristic(&self, board: &Board<ROWS, COLS>) -> SearchResult<Direction> {
         SearchResult {
             depth: 0,
-            value: self.heuristic(board),
+            value: self.heuristic(board) as f32,
             // action without any search
             action: Direction::Up,
         }
@@ -83,7 +83,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
     pub fn evaluate_for_player(
         &mut self,
         board: &Board<ROWS, COLS>,
-        depth: u32,
+        depth: u16,
     ) -> Result<SearchResult<Direction>, SearchError> {
         let mut best_result = SearchResult {
             depth,
@@ -93,7 +93,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         };
 
         if board.is_lost() {
-            best_result.depth = u32::MAX;
+            best_result.depth = u16::MAX;
             return Ok(best_result);
         }
 
@@ -134,7 +134,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
             board,
             depth,
             // 0,
-            best_result.value,
+            best_result.value as f64,
         );
 
         Ok(best_result)
@@ -144,8 +144,8 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
     pub fn evaluate_for_opponent(
         &mut self,
         board: &Board<ROWS, COLS>,
-        depth: u32,
-    ) -> Result<f64, SearchError> {
+        depth: u16,
+    ) -> Result<f32, SearchError> {
         if Instant::now() >= self.deadline {
             return Err(SearchError::TimeOut);
         }
@@ -157,8 +157,8 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         for (new_board, weight) in spawns {
             let evaluation = self.evaluate_for_player(&new_board, depth)?.value;
 
-            numerator += weight * evaluation;
-            denominator += weight;
+            numerator += weight as f32 * evaluation;
+            denominator += weight as f32;
         }
 
         Ok(numerator / denominator)
@@ -178,7 +178,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
             println!("{new_result:.2?}");
             result = new_result;
 
-            if result.depth == u32::MAX {
+            if result.depth == u16::MAX {
                 break;
             }
         }
