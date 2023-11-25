@@ -1,49 +1,10 @@
+pub mod weighted_avg;
+
 use std::{
     cmp::{self, Ordering},
     collections::HashMap,
     hash,
-    ops::{Add, AddAssign},
 };
-
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
-pub struct WeightedMean {
-    pub total_value: f64,
-    pub total_weight: f64,
-}
-
-impl WeightedMean {
-    pub fn new(value: f64, weight: f64) -> Self {
-        Self {
-            total_value: value,
-            total_weight: weight,
-        }
-    }
-
-    pub fn add_sample(&mut self, value: f64, weight: f64) {
-        self.total_value += value * weight;
-        self.total_weight += weight;
-    }
-
-    pub fn mean(&self) -> f64 {
-        self.total_value / self.total_weight
-    }
-}
-
-impl Add for WeightedMean {
-    type Output = Self;
-
-    fn add(mut self, rhs: Self) -> Self::Output {
-        self.total_value += rhs.total_value;
-        self.total_weight += rhs.total_weight;
-        self
-    }
-}
-
-impl AddAssign for WeightedMean {
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs;
-    }
-}
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct EvaluationEntry<P, V> {
@@ -64,7 +25,7 @@ impl<P: std::cmp::PartialOrd, V: std::ops::AddAssign> EvaluationEntry<P, V> {
 
 #[derive(Clone, Debug, Default)]
 pub struct Model<K, P> {
-    pub evaluation_memory: HashMap<K, EvaluationEntry<P, WeightedMean>>,
+    pub evaluation_memory: HashMap<K, EvaluationEntry<P, weighted_avg::WeightedAvg>>,
 }
 
 impl<K, P> Model<K, P> {
@@ -99,14 +60,15 @@ impl<K: hash::Hash + cmp::Eq, P: Default + Ord> Model<K, P> {
         decay: f64,
     ) {
         let entry = self.evaluation_memory.entry(key).or_default();
-        entry.value.total_value *= decay;
-        entry.value.total_weight *= decay;
 
         match entry.priority.cmp(&priority) {
             Ordering::Greater => {}
-            Ordering::Equal => entry.value.add_sample(value, weight),
+            Ordering::Equal => {
+                entry.value.scale(decay);
+                entry.value.add_sample(value, weight)
+            }
             Ordering::Less => {
-                entry.value = WeightedMean::new(value, weight);
+                entry.value = weighted_avg::WeightedAvg::with_value(value, weight);
                 entry.priority = priority;
             }
         }

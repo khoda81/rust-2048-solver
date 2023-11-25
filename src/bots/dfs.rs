@@ -4,7 +4,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::{heuristic, model::Model};
+use super::{
+    heuristic,
+    model::{weighted_avg::WeightedAvg, Model},
+};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct SearchResult<A> {
@@ -151,18 +154,16 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
             return Err(SearchError::TimeOut);
         }
 
-        let mut numerator = 0.;
-        let mut denominator = 0.;
-        let spawns = board.spawns();
+        let mut weighted_avg = WeightedAvg::new();
 
-        for (new_board, weight) in spawns {
-            let evaluation = self.evaluate_for_player(&new_board, depth)?.value;
-
-            numerator += weight as f32 * evaluation;
-            denominator += weight as f32;
+        for (new_board, weight) in board.spawns() {
+            weighted_avg.add_sample(
+                self.evaluate_for_player(&new_board, depth)?.value as f64,
+                weight,
+            );
         }
 
-        Ok(numerator / denominator)
+        Ok(weighted_avg.mean() as f32)
     }
 
     pub fn evaluate_until(
@@ -182,8 +183,10 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         {
             result = new_result;
             // TODO implement logging
-            println!("{result:.2?}");
+            // println!("{result:.2?}");
         }
+
+        println!("{result:.2?}");
 
         result
     }

@@ -19,9 +19,9 @@ fn main() {
     let mut ai = DFS::new();
 
     loop {
-        println!("{}", game.board);
+        // println!("{}", game.board);
 
-        let timeout = Duration::from_secs_f64(1.0);
+        let timeout = Duration::from_secs_f64(0.01);
         let deadline = Instant::now() + timeout;
 
         let action = ai.act(&game.board, deadline);
