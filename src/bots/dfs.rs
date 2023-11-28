@@ -1,12 +1,15 @@
-use crate::board::{Board, Direction};
-use std::{
-    fmt,
-    time::{Duration, Instant},
+use crate::{
+    board::{Board, Direction},
+    bots::{
+        heuristic,
+        model::{weighted_avg, WeightedAvgModel},
+    },
 };
 
-use super::{
-    heuristic,
-    model::{weighted_avg::WeightedAvg, Model},
+use std::{
+    fmt,
+    num::NonZeroUsize,
+    time::{Duration, Instant},
 };
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
@@ -29,27 +32,33 @@ impl fmt::Display for SearchError {
     }
 }
 
-pub struct DFS<const ROWS: usize, const COLS: usize> {
+pub struct MeanMax<const ROWS: usize, const COLS: usize> {
     pub player_cache: lru::LruCache<Board<ROWS, COLS>, SearchResult<Direction>>,
     pub deadline: Instant,
-    pub model: Model<heuristic::PreprocessedBoard, u16>,
+    pub model: WeightedAvgModel<heuristic::PreprocessedBoard>,
 }
 
 impl std::error::Error for SearchError {}
 
-impl<const ROWS: usize, const COLS: usize> Default for DFS<ROWS, COLS> {
+impl<const ROWS: usize, const COLS: usize> Default for MeanMax<ROWS, COLS> {
     fn default() -> Self {
-        DFS {
-            player_cache: lru::LruCache::new(1000000.try_into().unwrap()),
-            deadline: Instant::now(),
-            model: Model::new(),
-        }
+        Self::new()
     }
 }
 
-impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
+impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
+    const DEFAULT_CACHE_SIZE: usize = 1_000_000;
+
     pub fn new() -> Self {
-        Self::default()
+        Self::new_with_cache_size(Self::DEFAULT_CACHE_SIZE.try_into().unwrap())
+    }
+
+    pub fn new_with_cache_size(capacity: NonZeroUsize) -> Self {
+        Self {
+            player_cache: lru::LruCache::new(capacity),
+            deadline: Instant::now(),
+            model: WeightedAvgModel::new(),
+        }
     }
 
     fn preprocess_for_model(board: &Board<ROWS, COLS>) -> heuristic::PreprocessedBoard {
@@ -63,12 +72,11 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
         let value = value as f64;
         let weight = 2.0_f64.powi(depth.into());
 
-        let priority = 0;
         let prerocessed_board = Self::preprocess_for_model(board);
         let decay = 0.999;
 
         self.model
-            .weighted_learn_with_decay(prerocessed_board, value, weight, priority, decay)
+            .weighted_learn_with_decay(prerocessed_board, value, weight, (), decay)
     }
 
     pub fn heuristic(&self, board: &Board<ROWS, COLS>) -> f64 {
@@ -154,7 +162,7 @@ impl<const ROWS: usize, const COLS: usize> DFS<ROWS, COLS> {
             return Err(SearchError::TimeOut);
         }
 
-        let mut weighted_avg = WeightedAvg::new();
+        let mut weighted_avg = weighted_avg::WeightedAvg::new();
 
         for (new_board, weight) in board.spawns() {
             weighted_avg.add_sample(

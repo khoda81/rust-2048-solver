@@ -1,34 +1,33 @@
 #![allow(unused_imports)]
 
 use itertools::Itertools;
-use rust_2048_solver::{
-    board::Board,
-    bots::heuristic::{self},
-};
 use std::{
     collections::{hash_map::Entry, HashMap},
     time::{Duration, Instant},
 };
 
-use rust_2048_solver::{board::Direction, bots::dfs::DFS, game::Game};
+use rust_2048_solver::{
+    bots::{self, heuristic},
+    game,
+};
 
 fn main() {
     // show_map(heuristic::get_lookup());
 
-    let mut game = Game::<4, 4>::create();
-    let mut ai = DFS::new();
+    let mut game = game::Game::<4, 4>::create();
+    let mut ai = bots::dfs::MeanMax::new();
 
     loop {
-        // println!("{}", game.board);
+        println!("{}", game.board);
 
-        let timeout = Duration::from_secs_f64(0.01);
+        let timeout = Duration::from_secs_f64(0.2);
         let deadline = Instant::now() + timeout;
 
         let action = ai.act(&game.board, deadline);
 
-        let miss = deadline.elapsed();
+        let miss = Instant::now().saturating_duration_since(deadline);
         if !miss.is_zero() {
-            println!("missed: {miss:?}");
+            println!("Deadline missed by {miss:?}");
         }
 
         // print_lookup(&ai);
@@ -43,10 +42,10 @@ fn main() {
     print_lookup(&ai);
 }
 
-fn print_lookup(ai: &DFS<4, 4>) {
+fn print_lookup<const ROWS: usize, const COLS: usize>(ai: &bots::dfs::MeanMax<ROWS, COLS>) {
     let mut new_lookup = heuristic::get_lookup().clone();
 
-    for (key, eval) in ai.model.evaluation_memory.iter() {
+    for (key, eval) in ai.model.memory.iter() {
         new_lookup.insert(*key, eval.value.mean());
     }
 

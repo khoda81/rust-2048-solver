@@ -1,39 +1,59 @@
-use std::ops::{Add, AddAssign};
+use std::ops::{Add, AddAssign, Div, Mul, MulAssign};
 
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
-pub struct WeightedAvg {
-    pub total_value: f64,
-    pub total_weight: f64,
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct WeightedAvg<T = f64, W = T> {
+    pub total_value: T,
+    pub total_weight: W,
 }
 
-impl WeightedAvg {
-    pub fn new() -> Self {
-        Self::with_value(0.0, 0.0)
+impl<T: num::traits::Zero> Default for WeightedAvg<T> {
+    fn default() -> Self {
+        Self::new()
     }
+}
 
-    pub fn with_value(value: f64, weight: f64) -> Self {
+impl<T: num::traits::Zero> WeightedAvg<T> {
+    pub fn new() -> Self {
+        Self {
+            total_value: T::zero(),
+            total_weight: T::zero(),
+        }
+    }
+}
+
+impl<T> WeightedAvg<T> {
+    pub fn with_value(value: T, weight: T) -> Self {
         Self {
             total_value: value,
             total_weight: weight,
         }
     }
+}
 
-    pub fn add_sample(&mut self, value: f64, weight: f64) {
-        self.total_value += value * weight;
+impl<T> WeightedAvg<T>
+where
+    T: Mul<Output = T> + AddAssign<<T as Mul>::Output> + Clone,
+{
+    pub fn add_sample(&mut self, value: T, weight: T) {
+        self.total_value += value * weight.clone();
         self.total_weight += weight;
-    }
-
-    pub fn scale(&mut self, scale: f64) {
-        self.total_value *= scale;
-        self.total_weight *= scale;
-    }
-
-    pub fn mean(&self) -> f64 {
-        self.total_value / self.total_weight
     }
 }
 
-impl Add for WeightedAvg {
+impl<T: MulAssign + Clone> WeightedAvg<T> {
+    pub fn scale(&mut self, scale: T) {
+        self.total_value *= scale.clone();
+        self.total_weight *= scale;
+    }
+}
+
+impl<T: Div<Output = T> + Clone> WeightedAvg<T> {
+    pub fn mean(&self) -> T {
+        self.total_value.clone() / self.total_weight.clone()
+    }
+}
+
+impl<T: AddAssign> Add for WeightedAvg<T> {
     type Output = Self;
 
     fn add(mut self, rhs: Self) -> Self::Output {
@@ -43,8 +63,12 @@ impl Add for WeightedAvg {
     }
 }
 
-impl AddAssign for WeightedAvg {
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs;
+impl<T, Rhs> AddAssign<Rhs> for WeightedAvg<T>
+where
+    Self: Clone,
+    WeightedAvg<T>: Add<Rhs, Output = WeightedAvg<T>>,
+{
+    fn add_assign(&mut self, rhs: Rhs) {
+        *self = self.clone() + rhs;
     }
 }

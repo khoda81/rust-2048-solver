@@ -13,13 +13,13 @@ mod tests {
     use super::*;
     use rust_2048_solver::{
         board::{Board, Direction},
-        bots::dfs::DFS,
+        bots::dfs::MeanMax,
     };
     use test::{black_box, Bencher};
 
     #[bench]
     fn bench_search(b: &mut Bencher) {
-        let mut ai = DFS::new();
+        let mut ai = MeanMax::new();
 
         let mut board: Board<4, 4>;
 
@@ -47,7 +47,7 @@ mod tests {
         });
     }
 
-    fn show_fill_percent(ai: &DFS<4, 4>) {
+    fn show_fill_percent(ai: &MeanMax<4, 4>) {
         let capacity = ai.player_cache.cap().get();
         let filled = ai.player_cache.len();
         let fill_percent = (filled * 100) as f64 / capacity as f64;
