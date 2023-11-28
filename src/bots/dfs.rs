@@ -34,11 +34,17 @@ impl fmt::Display for SearchError {
 
 pub struct MeanMax<const ROWS: usize, const COLS: usize> {
     pub player_cache: lru::LruCache<Board<ROWS, COLS>, SearchResult<Direction>>,
-    pub deadline: Instant,
+    pub deadline: Option<Instant>,
     pub model: WeightedAvgModel<heuristic::PreprocessedBoard>,
 }
 
 impl std::error::Error for SearchError {}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct SearchConstraint {
+    pub deadline: Option<Instant>,
+    pub depth: Option<usize>,
+}
 
 impl<const ROWS: usize, const COLS: usize> Default for MeanMax<ROWS, COLS> {
     fn default() -> Self {
@@ -56,7 +62,7 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
     pub fn new_with_cache_size(capacity: NonZeroUsize) -> Self {
         Self {
             player_cache: lru::LruCache::new(capacity),
-            deadline: Instant::now(),
+            deadline: None,
             model: WeightedAvgModel::new(),
         }
     }
@@ -158,7 +164,10 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         board: &Board<ROWS, COLS>,
         depth: u16,
     ) -> Result<f32, SearchError> {
-        if Instant::now() >= self.deadline {
+        if let Some(_miss) = self
+            .deadline
+            .and_then(|deadline| Instant::now().checked_duration_since(deadline))
+        {
             return Err(SearchError::TimeOut);
         }
 
@@ -174,32 +183,48 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         Ok(weighted_avg.mean() as f32)
     }
 
-    pub fn evaluate_until(
+    pub fn search_until(
         &mut self,
         board: &Board<ROWS, COLS>,
-        deadline: Instant,
+        constraint: SearchConstraint,
     ) -> SearchResult<Direction> {
         // pessimistic deadline to end early instead of late
-        self.deadline = deadline - Duration::from_micros(100);
+        self.deadline = constraint
+            .deadline
+            .map(|deadline| deadline - Duration::from_micros(273));
 
         let mut result = self.act_by_heuristic(board);
+        let result = loop {
+            let depth = match result.depth.checked_add(1) {
+                Some(val) => val,
+                None => break result,
+            };
 
-        while let Some(new_result) = result
-            .depth
-            .checked_add(1)
-            .and_then(|new_depth| self.evaluate_for_player(board, new_depth).ok())
-        {
-            result = new_result;
-            // TODO implement logging
+            if let Some(max_depth) = constraint.depth {
+                if depth as usize > max_depth {
+                    break result;
+                }
+            }
+
+            result = match self.evaluate_for_player(board, depth) {
+                Ok(result) => result,
+                Err(_) => break result,
+            }
+
             // println!("{result:.2?}");
-        }
+        };
 
+        // TODO implement logging
         println!("{result:.2?}");
 
         result
     }
 
-    pub fn act(&mut self, board: &Board<ROWS, COLS>, deadline: Instant) -> Direction {
-        self.evaluate_until(board, deadline).action
+    pub fn act(
+        &mut self,
+        board: &Board<ROWS, COLS>,
+        search_constraint: SearchConstraint,
+    ) -> Direction {
+        self.search_until(board, search_constraint).action
     }
 }

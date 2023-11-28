@@ -33,7 +33,7 @@ mod tests {
         .into();
         board.swipe(Direction::Down);
 
-        ai.deadline = Instant::now() + Duration::from_secs(1_000_000_000);
+        ai.deadline = Some(Instant::now() + Duration::from_secs(1_000_000_000));
 
         println!("{board}");
         b.iter(|| {
