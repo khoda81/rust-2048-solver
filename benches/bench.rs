@@ -1,21 +1,22 @@
 #![feature(test)]
 
-extern crate test;
-
-pub fn add_two(a: i32) -> i32 {
-    a + 2
-}
-
 #[cfg(test)]
-mod tests {
-    use std::time::{Duration, Instant};
+mod benches {
+    extern crate test;
 
-    use super::*;
     use rust_2048_solver::{
         board::{Board, Direction},
         bots::dfs::MeanMax,
     };
+
     use test::{black_box, Bencher};
+
+    fn show_fill_percent(ai: &MeanMax<4, 4>) {
+        let capacity = ai.player_cache.cap().get();
+        let filled = ai.player_cache.len();
+        let fill_percent = (filled * 100) as f64 / capacity as f64;
+        println!("fill = {fill_percent:.2?}%",);
+    }
 
     #[bench]
     fn bench_search(b: &mut Bencher) {
@@ -33,13 +34,11 @@ mod tests {
         .into();
         board.swipe(Direction::Down);
 
-        ai.deadline = Some(Instant::now() + Duration::from_secs(1_000_000_000));
-
         println!("{board}");
         b.iter(|| {
             ai.player_cache.clear();
             let result = ai
-                .evaluate_for_player(&board, 5)
+                .evaluate_for_player(&board, 4)
                 .expect("we should not reach the deadline");
 
             black_box(result);
@@ -47,10 +46,21 @@ mod tests {
         });
     }
 
-    fn show_fill_percent(ai: &MeanMax<4, 4>) {
-        let capacity = ai.player_cache.cap().get();
-        let filled = ai.player_cache.len();
-        let fill_percent = (filled * 100) as f64 / capacity as f64;
-        println!("fill = {fill_percent:.2?}%",);
+    #[bench]
+    fn bench_board_swipe(b: &mut Bencher) {
+        let mut board = Board::<4, 4>::new();
+
+        b.iter(|| {
+            (0..10_000).for_each(|_| {
+                board.swipe(Direction::Up);
+                board.swipe(Direction::Right);
+                board.swipe(Direction::Down);
+                board.swipe(Direction::Left);
+
+                if board.is_lost() {
+                    board = Board::new();
+                }
+            })
+        });
     }
 }
