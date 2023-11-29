@@ -1,4 +1,7 @@
-use std::ops::{Add, AddAssign, Div, Mul, MulAssign};
+use std::{
+    fmt::{Display, Write},
+    ops::{Add, AddAssign, Div, Mul, MulAssign},
+};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct WeightedAvg<T = f64, W = T> {
@@ -70,5 +73,18 @@ where
 {
     fn add_assign(&mut self, rhs: Rhs) {
         *self = self.clone() + rhs;
+    }
+}
+
+impl<T: Display + Div<Output = T> + Clone> Display for WeightedAvg<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.mean().fmt(f)?;
+        f.write_str(" (")?;
+        self.total_value.fmt(f)?;
+        f.write_char('/')?;
+        self.total_weight.fmt(f)?;
+        f.write_char(')')?;
+
+        Ok(())
     }
 }

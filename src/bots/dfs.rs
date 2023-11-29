@@ -32,10 +32,35 @@ impl fmt::Display for SearchError {
     }
 }
 
+pub struct MetricsRecorder {
+    pub cache_hit_chance_model: WeightedAvgModel<u16>,
+    pub cache_hit_depth_model: WeightedAvgModel<u16>,
+}
+
+impl MetricsRecorder {
+    fn new() -> Self {
+        MetricsRecorder {
+            cache_hit_chance_model: WeightedAvgModel::new(),
+            cache_hit_depth_model: WeightedAvgModel::new(),
+        }
+    }
+
+    fn record_cache_hit(&mut self, depth: u16, result: &SearchResult<Direction>) {
+        self.cache_hit_chance_model.learn(depth, 1.0, ());
+        self.cache_hit_depth_model
+            .learn(depth, result.depth.into(), ());
+    }
+
+    fn record_cache_miss(&mut self, depth: u16) {
+        self.cache_hit_chance_model.learn(depth, 0.0, ());
+    }
+}
+
 pub struct MeanMax<const ROWS: usize, const COLS: usize> {
     pub player_cache: lru::LruCache<Board<ROWS, COLS>, SearchResult<Direction>>,
     pub deadline: Option<Instant>,
     pub model: WeightedAvgModel<heuristic::PreprocessedBoard>,
+    pub metrics_recorder: MetricsRecorder,
 }
 
 impl std::error::Error for SearchError {}
@@ -64,6 +89,7 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
             player_cache: lru::LruCache::new(capacity),
             deadline: None,
             model: WeightedAvgModel::new(),
+            metrics_recorder: MetricsRecorder::new(),
         }
     }
 
@@ -126,9 +152,13 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
 
         if let Some(result) = self.player_cache.get(board) {
             if result.depth >= depth {
+                self.metrics_recorder.record_cache_hit(depth, result);
+
                 return Ok(*result);
             }
         }
+
+        self.metrics_recorder.record_cache_miss(depth);
 
         for action in [
             Direction::Up,
@@ -153,7 +183,9 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         }
 
         self.player_cache.put(board.clone(), best_result);
-        self.train_model(board, best_result.value, depth);
+        if depth > 2 {
+            self.train_model(board, best_result.value, depth);
+        }
 
         Ok(best_result)
     }
@@ -193,8 +225,16 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
             .deadline
             .map(|deadline| deadline - Duration::from_micros(273));
 
-        let mut result = self.act_by_heuristic(board);
-        let result = loop {
+        let mut result = self
+            .player_cache
+            .get(board)
+            .copied()
+            .unwrap_or(self.act_by_heuristic(board));
+
+        // TODO implement logging
+        println!("{result:.2?}");
+
+        loop {
             let depth = match result.depth.checked_add(1) {
                 Some(val) => val,
                 None => break result,
@@ -209,15 +249,11 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
             result = match self.evaluate_for_player(board, depth) {
                 Ok(result) => result,
                 Err(_) => break result,
-            }
+            };
 
-            // println!("{result:.2?}");
-        };
-
-        // TODO implement logging
-        println!("{result:.2?}");
-
-        result
+            // TODO implement logging
+            println!("{result:.2?}");
+        }
     }
 
     pub fn act(

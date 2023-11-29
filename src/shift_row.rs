@@ -8,6 +8,7 @@
 /// shift_row(&mut row);
 /// assert_eq!(row, [3, 3, 0, 0]);
 /// ```
+#[inline(always)]
 pub fn shift_row<const SIZE: usize>(row: &mut [u8; SIZE]) -> bool {
     let mut last_pos = 0;
     let mut changed = false;

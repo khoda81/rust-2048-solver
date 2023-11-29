@@ -3,8 +3,11 @@
 use std::{
     cmp::{self, Ordering},
     collections::HashMap,
+    fmt::{Display, Write},
     hash,
 };
+
+use itertools::Itertools;
 
 pub mod preprocessor;
 pub mod weighted_avg;
@@ -63,5 +66,19 @@ impl<I: hash::Hash + cmp::Eq, P: Default + Ord> WeightedAvgModel<I, P> {
                 entry.priority = priority;
             }
         }
+    }
+}
+
+impl<I: Display + std::cmp::Ord, P> Display for WeightedAvgModel<I, P> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.memory
+            .iter()
+            .sorted_by(|(k1, _), (k2, _)| k1.cmp(k2))
+            .try_for_each(|(key, value)| {
+                key.fmt(f)?;
+                f.write_str(": ")?;
+                value.value.fmt(f)?;
+                f.write_char('\n')
+            })
     }
 }

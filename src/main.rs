@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 
 use itertools::Itertools;
+use num::Signed;
 use std::{
     collections::{hash_map::Entry, HashMap},
     time::{Duration, Instant},
@@ -27,7 +28,7 @@ fn main() {
     loop {
         println!("{}", game.board);
 
-        let timeout = Duration::from_secs_f64(0.2);
+        let timeout = Duration::from_secs_f64(1.0);
         let deadline = Instant::now() + timeout;
 
         #[allow(clippy::needless_update)]
@@ -47,14 +48,22 @@ fn main() {
 
         deadline_miss_model.add_sample(miss_seconds, 1.0);
 
+        println!("Hit chance per depth:");
+        println!("{:.2}", ai.metrics_recorder.cache_hit_chance_model);
+
+        println!("Hit depth per depth:");
+        println!("{:.2}", ai.metrics_recorder.cache_hit_depth_model);
+
         if let Some(miss) = miss {
             println!("Deadline missed by {miss:?}");
         }
 
-        if let Ok(avg_miss) = Duration::try_from_secs_f32(deadline_miss_model.mean()) {
-            println!("Avg miss: {avg_miss:?}");
-        } else if let Ok(time_loss) = Duration::try_from_secs_f32(-deadline_miss_model.mean()) {
-            println!("Avg time loss: {:?}", time_loss);
+        let secs = deadline_miss_model.mean();
+        let abs_avg_miss = Duration::from_secs_f32(secs.abs());
+        if secs.is_positive() {
+            println!("Avg miss: {abs_avg_miss:?}");
+        } else {
+            println!("Avg miss: -{abs_avg_miss:?}");
         }
 
         // print_lookup(&ai);
