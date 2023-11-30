@@ -9,8 +9,11 @@ use crate::{
 use std::{
     fmt,
     num::NonZeroUsize,
+    ops::ControlFlow,
     time::{Duration, Instant},
 };
+
+use super::model::weighted_avg::WeightedAvg;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct SearchResult<A> {
@@ -32,43 +35,67 @@ impl fmt::Display for SearchError {
     }
 }
 
-pub struct MetricsRecorder {
+impl std::error::Error for SearchError {}
+
+pub struct Logger {
     pub cache_hit_chance_model: WeightedAvgModel<u16>,
     pub cache_hit_depth_model: WeightedAvgModel<u16>,
+    pub deadline_miss_model: WeightedAvg,
+    pub print_search_results: bool,
 }
 
-impl MetricsRecorder {
+impl Logger {
     fn new() -> Self {
-        MetricsRecorder {
+        Logger {
             cache_hit_chance_model: WeightedAvgModel::new(),
             cache_hit_depth_model: WeightedAvgModel::new(),
+            deadline_miss_model: weighted_avg::WeightedAvg::new(),
+            print_search_results: false,
         }
     }
 
-    fn record_cache_hit(&mut self, depth: u16, result: &SearchResult<Direction>) {
+    fn log_cache_hit(&mut self, depth: u16, result: &SearchResult<Direction>) {
         self.cache_hit_chance_model.learn(depth, 1.0, ());
         self.cache_hit_depth_model
             .learn(depth, result.depth.into(), ());
     }
 
-    fn record_cache_miss(&mut self, depth: u16) {
+    fn log_cache_miss(&mut self, depth: u16) {
         self.cache_hit_chance_model.learn(depth, 0.0, ());
     }
+
+    fn log_search_result(&self, result: &SearchResult<Direction>) {
+        if self.print_search_results {
+            // TODO implement logging
+            println!("{result:.2?}");
+        }
+    }
+
+    fn log_search_start<T>(&self, board: &T, constraint: SearchConstraint) {}
+
+    fn log_search_end(&self, result: &SearchResult<Direction>) {}
 }
 
 pub struct MeanMax<const ROWS: usize, const COLS: usize> {
     pub player_cache: lru::LruCache<Board<ROWS, COLS>, SearchResult<Direction>>,
     pub deadline: Option<Instant>,
     pub model: WeightedAvgModel<heuristic::PreprocessedBoard>,
-    pub metrics_recorder: MetricsRecorder,
+    pub logger: Logger,
 }
 
-impl std::error::Error for SearchError {}
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct SearchConstraint {
     pub deadline: Option<Instant>,
-    pub depth: Option<usize>,
+    pub max_depth: usize,
+}
+
+impl Default for SearchConstraint {
+    fn default() -> Self {
+        Self {
+            deadline: None,
+            max_depth: usize::MAX,
+        }
+    }
 }
 
 impl<const ROWS: usize, const COLS: usize> Default for MeanMax<ROWS, COLS> {
@@ -89,7 +116,7 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
             player_cache: lru::LruCache::new(capacity),
             deadline: None,
             model: WeightedAvgModel::new(),
-            metrics_recorder: MetricsRecorder::new(),
+            logger: Logger::new(),
         }
     }
 
@@ -152,13 +179,12 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
 
         if let Some(result) = self.player_cache.get(board) {
             if result.depth >= depth {
-                self.metrics_recorder.record_cache_hit(depth, result);
-
+                self.logger.log_cache_hit(depth, result);
                 return Ok(*result);
             }
         }
 
-        self.metrics_recorder.record_cache_miss(depth);
+        self.logger.log_cache_miss(depth);
 
         for action in [
             Direction::Up,
@@ -166,7 +192,7 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
             Direction::Left,
             Direction::Right,
         ] {
-            let mut new_board = board.clone();
+            let mut new_board = *board;
 
             if !new_board.swipe(action) {
                 continue;
@@ -182,7 +208,7 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
             }
         }
 
-        self.player_cache.put(board.clone(), best_result);
+        self.player_cache.put(*board, best_result);
         if depth > 2 {
             self.train_model(board, best_result.value, depth);
         }
@@ -220,39 +246,43 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         board: &Board<ROWS, COLS>,
         constraint: SearchConstraint,
     ) -> SearchResult<Direction> {
-        // pessimistic deadline to end early instead of late
-        self.deadline = constraint
-            .deadline
-            .map(|deadline| deadline - Duration::from_micros(273));
+        self.logger.log_search_start(board, constraint);
 
-        let mut result = self
-            .player_cache
-            .get(board)
-            .copied()
-            .unwrap_or(self.act_by_heuristic(board));
+        let cached_result = self.player_cache.get(board).copied();
+        let mut result = cached_result.unwrap_or(self.act_by_heuristic(board));
 
-        // TODO implement logging
-        println!("{result:.2?}");
+        self.logger.log_search_result(&result);
 
         loop {
-            let depth = match result.depth.checked_add(1) {
-                Some(val) => val,
-                None => break result,
-            };
-
-            if let Some(max_depth) = constraint.depth {
-                if depth as usize > max_depth {
-                    break result;
+            result = match self.search_deeper(result, constraint, board) {
+                ControlFlow::Continue(result) => result,
+                ControlFlow::Break(result) => {
+                    self.logger.log_search_end(&result);
+                    return result;
                 }
-            }
-
-            result = match self.evaluate_for_player(board, depth) {
-                Ok(result) => result,
-                Err(_) => break result,
             };
 
-            // TODO implement logging
-            println!("{result:.2?}");
+            self.logger.log_search_result(&result);
+        }
+    }
+
+    fn search_deeper(
+        &mut self,
+        prev_result: SearchResult<Direction>,
+        constraint: SearchConstraint,
+        board: &Board<ROWS, COLS>,
+    ) -> ControlFlow<SearchResult<Direction>, SearchResult<Direction>> {
+        self.deadline = constraint
+            .deadline
+            // pessimistic deadline to end early instead of late
+            .map(|deadline| deadline - Duration::from_micros(3));
+
+        let new_depth = prev_result.depth.checked_add(1);
+        let new_depth = new_depth.filter(|&depth| (depth as usize) <= constraint.max_depth);
+
+        match new_depth.and_then(|depth| self.evaluate_for_player(board, depth).ok()) {
+            Some(new_result) => ControlFlow::Continue(new_result),
+            None => ControlFlow::Break(prev_result),
         }
     }
 

@@ -39,26 +39,28 @@ impl fmt::Display for Direction {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Board<const COLS: usize, const ROWS: usize> {
     pub cells: [[u8; COLS]; ROWS],
 }
 
 impl<const COLS: usize, const ROWS: usize> Default for Board<COLS, ROWS> {
     fn default() -> Self {
-        [[0; COLS]; ROWS].into()
+        Self::new()
     }
 }
 
 impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
     pub fn new() -> Self {
-        Self::default()
+        [[0; COLS]; ROWS].into()
     }
 
+    #[inline(always)]
     pub fn count_empty(&self) -> usize {
         self.cells.iter().flatten().filter(|&c| c == &0).count()
     }
 
+    #[inline(always)]
     pub fn spawns(&self) -> Vec<(Self, f64)> {
         let mut boards = Vec::new();
 
@@ -77,6 +79,7 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
         boards
     }
 
+    #[inline(always)]
     pub fn random_spawn(&self) -> Self {
         let mut options = self.spawns();
         let weights = options.iter().map(|item| item.1);
@@ -86,11 +89,13 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
         options.swap_remove(index).0
     }
 
-    pub fn move_left(&mut self) -> bool {
+    #[inline(always)]
+    pub fn swipe_left(&mut self) -> bool {
         self.cells.iter_mut().map(shift_row).max().unwrap_or(false)
     }
 
-    pub fn move_right(&mut self) -> bool {
+    #[inline(always)]
+    pub fn swipe_right(&mut self) -> bool {
         self.cells
             .iter_mut()
             .map(|row| {
@@ -103,7 +108,8 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
             .unwrap_or(false)
     }
 
-    pub fn move_up(&mut self) -> bool {
+    #[inline(always)]
+    pub fn swipe_up(&mut self) -> bool {
         (0..COLS)
             .map(|i| {
                 let mut row = [0; ROWS];
@@ -123,7 +129,8 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
             .unwrap_or(false)
     }
 
-    pub fn move_down(&mut self) -> bool {
+    #[inline(always)]
+    pub fn swipe_down(&mut self) -> bool {
         (0..COLS)
             .map(|i| {
                 let mut row = [0; ROWS];
@@ -144,18 +151,20 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
             .unwrap_or(false)
     }
 
+    #[inline(always)]
     pub fn is_lost(&self) -> bool {
         (0..ROWS - 1).all(|i| (0..COLS).all(|j| self.cells[i][j] != self.cells[i + 1][j]))
             && (0..ROWS).all(|i| (0..COLS - 1).all(|j| self.cells[i][j] != self.cells[i][j + 1]))
             && self.cells.iter().flatten().all(|&x| x != 0)
     }
 
+    #[inline(always)]
     pub fn swipe(&mut self, direction: Direction) -> bool {
         match direction {
-            Direction::Left => self.move_left(),
-            Direction::Right => self.move_right(),
-            Direction::Up => self.move_up(),
-            Direction::Down => self.move_down(),
+            Direction::Left => self.swipe_left(),
+            Direction::Right => self.swipe_right(),
+            Direction::Up => self.swipe_up(),
+            Direction::Down => self.swipe_down(),
         }
     }
 }
