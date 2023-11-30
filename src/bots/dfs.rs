@@ -9,7 +9,6 @@ use crate::{
 use std::{
     fmt,
     num::NonZeroUsize,
-    ops::ControlFlow,
     time::{Duration, Instant},
 };
 
@@ -25,17 +24,17 @@ pub struct SearchResult<A> {
 #[derive(Debug)]
 pub enum SearchError {
     TimeOut,
+    AtMaximumDepth,
 }
 
 impl fmt::Display for SearchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::TimeOut => write!(f, "reached deadline before finishing computation"),
+            SearchError::TimeOut => write!(f, "reached deadline before finishing computation"),
+            SearchError::AtMaximumDepth => write!(f, "we are already at maximum depth"),
         }
     }
 }
-
-impl std::error::Error for SearchError {}
 
 pub struct Logger {
     pub cache_hit_chance_model: WeightedAvgModel<u16>,
@@ -71,9 +70,9 @@ impl Logger {
         }
     }
 
-    fn log_search_start<T>(&self, board: &T, constraint: SearchConstraint) {}
+    fn log_search_start<T>(&self, _board: &T, _constraint: SearchConstraint) {}
 
-    fn log_search_end(&self, result: &SearchResult<Direction>) {}
+    fn log_search_end(&self, _result: &SearchResult<Direction>) {}
 }
 
 pub struct MeanMax<const ROWS: usize, const COLS: usize> {
@@ -248,42 +247,43 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
     ) -> SearchResult<Direction> {
         self.logger.log_search_start(board, constraint);
 
-        let cached_result = self.player_cache.get(board).copied();
-        let mut result = cached_result.unwrap_or(self.act_by_heuristic(board));
+        let cached_result = self.player_cache.get(board).cloned();
+        let mut prev_result = cached_result.unwrap_or(self.act_by_heuristic(board));
 
-        self.logger.log_search_result(&result);
+        self.logger.log_search_result(&prev_result);
 
         loop {
-            result = match self.search_deeper(result, constraint, board) {
-                ControlFlow::Continue(result) => result,
-                ControlFlow::Break(result) => {
-                    self.logger.log_search_end(&result);
-                    return result;
+            match self.search_deeper(&prev_result, constraint, board) {
+                Ok(result) => {
+                    self.logger.log_search_result(&result);
+                    prev_result = result;
                 }
-            };
-
-            self.logger.log_search_result(&result);
+                Err(_err) => {
+                    self.logger.log_search_end(&prev_result);
+                    break prev_result;
+                }
+            }
         }
     }
 
+    #[inline(always)]
     fn search_deeper(
         &mut self,
-        prev_result: SearchResult<Direction>,
+        prev_result: &SearchResult<Direction>,
         constraint: SearchConstraint,
         board: &Board<ROWS, COLS>,
-    ) -> ControlFlow<SearchResult<Direction>, SearchResult<Direction>> {
+    ) -> Result<SearchResult<Direction>, SearchError> {
         self.deadline = constraint
             .deadline
-            // pessimistic deadline to end early instead of late
+            // Bring back the deadline to account for roll-up time
             .map(|deadline| deadline - Duration::from_micros(3));
 
         let new_depth = prev_result.depth.checked_add(1);
-        let new_depth = new_depth.filter(|&depth| (depth as usize) <= constraint.max_depth);
+        let new_depth = new_depth
+            .filter(|&depth| (depth as usize) <= constraint.max_depth)
+            .ok_or(SearchError::AtMaximumDepth)?;
 
-        match new_depth.and_then(|depth| self.evaluate_for_player(board, depth).ok()) {
-            Some(new_result) => ControlFlow::Continue(new_result),
-            None => ControlFlow::Break(prev_result),
-        }
+        self.evaluate_for_player(board, new_depth)
     }
 
     pub fn act(

@@ -59,7 +59,7 @@ fn main() {
     let mut game = game::Game::<4, 4>::create();
     let mut ai = bots::dfs::MeanMax::new();
 
-    // ai.logger.print_search_results = true;
+    ai.logger.print_search_results = true;
 
     loop {
         println!("{}", game.board);
@@ -109,7 +109,7 @@ fn main() {
     // print_lookup(&ai);
 }
 
-fn get_signed_duration(seconds: f64) -> Signed<Duration> {
+pub fn get_signed_duration(seconds: f64) -> Signed<Duration> {
     let abs_duration = Duration::from_secs_f64(seconds.abs());
     if seconds.is_sign_positive() {
         Signed::Positive(abs_duration)

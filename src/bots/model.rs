@@ -55,13 +55,13 @@ impl<I: hash::Hash + cmp::Eq, P: Default + Ord> WeightedAvgModel<I, P> {
     ) {
         let entry = self.memory.entry(input).or_default();
 
-        match entry.priority.cmp(&priority) {
-            Ordering::Greater => {}
+        match priority.cmp(&entry.priority) {
+            Ordering::Less => {}
             Ordering::Equal => {
                 entry.value.scale(decay);
-                entry.value.add_sample(value, weight)
+                entry.value.add_sample(value, weight);
             }
-            Ordering::Less => {
+            Ordering::Greater => {
                 entry.value = weighted_avg::WeightedAvg::with_value(value, weight);
                 entry.priority = priority;
             }

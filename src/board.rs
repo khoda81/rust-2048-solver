@@ -61,27 +61,35 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
     }
 
     #[inline(always)]
-    pub fn spawns(&self) -> Vec<(Self, f64)> {
-        let mut boards = Vec::new();
-
-        for (i, row) in self.cells.into_iter().enumerate() {
-            for (j, _) in row.into_iter().enumerate().filter(|&c| c.1 == 0) {
-                let mut new_board = self.cells;
-                new_board[i][j] = 1;
-                boards.push((new_board.into(), 2.));
-
-                let mut new_board = self.cells;
-                new_board[i][j] = 2;
-                boards.push((new_board.into(), 1.));
-            }
-        }
-
-        boards
+    pub fn spawns(&self) -> impl IntoIterator<Item = (Self, f64)> + '_ {
+        self.cells
+            .into_iter()
+            .enumerate()
+            .flat_map(|(i, row)| {
+                std::iter::repeat(i)
+                    .zip(0_usize..)
+                    .zip(row)
+                    .filter_map(|(pos, cell)| (cell == 0).then_some(pos))
+            })
+            .flat_map(|(i, j)| {
+                [
+                    {
+                        let mut new_board_1 = self.cells;
+                        new_board_1[i][j] = 1;
+                        (new_board_1.into(), 2.)
+                    },
+                    {
+                        let mut new_board_2 = self.cells;
+                        new_board_2[i][j] = 2;
+                        (new_board_2.into(), 1.)
+                    },
+                ]
+            })
     }
 
     #[inline(always)]
     pub fn random_spawn(&self) -> Self {
-        let mut options = self.spawns();
+        let mut options: Vec<_> = self.spawns().into_iter().collect();
         let weights = options.iter().map(|item| item.1);
         let dist = WeightedIndex::new(weights).unwrap();
         let mut rng = rand::thread_rng();
