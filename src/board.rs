@@ -1,4 +1,8 @@
-use std::fmt::{self, Write};
+use std::fmt::Write as _;
+use std::{
+    array, fmt,
+    ops::{Deref, DerefMut},
+};
 
 use rand::{
     distributions::{Distribution, Standard, WeightedIndex},
@@ -41,7 +45,7 @@ impl fmt::Display for Direction {
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Board<const COLS: usize, const ROWS: usize> {
-    pub cells: [[u8; COLS]; ROWS],
+    pub cells: [[Cell; COLS]; ROWS],
 }
 
 impl<const COLS: usize, const ROWS: usize> Default for Board<COLS, ROWS> {
@@ -50,6 +54,10 @@ impl<const COLS: usize, const ROWS: usize> Default for Board<COLS, ROWS> {
     }
 }
 
+type Weight = u8;
+type Cell = u8;
+
+#[allow(clippy::unnecessary_fold)]
 impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
     pub fn new() -> Self {
         [[0; COLS]; ROWS].into()
@@ -57,113 +65,94 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
 
     #[inline(always)]
     pub fn count_empty(&self) -> usize {
-        self.cells.iter().flatten().filter(|&c| c == &0).count()
+        self.iter().flatten().filter(|&c| c == &0).count()
     }
 
     #[inline(always)]
-    pub fn spawns(&self) -> impl IntoIterator<Item = (Self, f64)> + '_ {
-        self.cells
-            .into_iter()
+    pub fn spawns(&self) -> impl Iterator<Item = (Self, Weight)> + '_ {
+        self.into_iter()
             .enumerate()
             .flat_map(|(i, row)| {
-                std::iter::repeat(i)
-                    .zip(0_usize..)
-                    .zip(row)
-                    .filter_map(|(pos, cell)| (cell == 0).then_some(pos))
+                row.into_iter()
+                    .enumerate()
+                    .filter_map(move |(j, cell)| (cell == 0).then_some((i, j)))
             })
             .flat_map(|(i, j)| {
-                [
-                    {
-                        let mut new_board_1 = self.cells;
-                        new_board_1[i][j] = 1;
-                        (new_board_1.into(), 2.)
-                    },
-                    {
-                        let mut new_board_2 = self.cells;
-                        new_board_2[i][j] = 2;
-                        (new_board_2.into(), 1.)
-                    },
-                ]
+                [(1, 2), (2, 1)].map(|(cell, weight)| {
+                    let mut new_board = self.cells;
+                    new_board[i][j] = cell;
+                    (new_board.into(), weight)
+                })
             })
     }
 
     #[inline(always)]
     pub fn random_spawn(&self) -> Self {
-        let mut options: Vec<_> = self.spawns().into_iter().collect();
-        let weights = options.iter().map(|item| item.1);
+        let options: Vec<_> = self.spawns().collect();
+        let weights = options.iter().map(|(_board, weight)| weight);
         let dist = WeightedIndex::new(weights).unwrap();
         let mut rng = rand::thread_rng();
         let index = dist.sample(&mut rng);
-        options.swap_remove(index).0
+        options[index].0
     }
 
     #[inline(always)]
     pub fn swipe_left(&mut self) -> bool {
-        self.cells.iter_mut().map(shift_row).max().unwrap_or(false)
+        self.iter_mut().map(shift_row).fold(false, bool::max)
     }
 
     #[inline(always)]
     pub fn swipe_right(&mut self) -> bool {
-        self.cells
-            .iter_mut()
+        self.iter_mut()
             .map(|row| {
                 row.reverse();
                 let moved = shift_row(row);
                 row.reverse();
                 moved
             })
-            .max()
-            .unwrap_or(false)
+            .fold(false, bool::max)
     }
 
     #[inline(always)]
     pub fn swipe_up(&mut self) -> bool {
-        (0..COLS)
-            .map(|i| {
-                let mut row = [0; ROWS];
-                (0..ROWS).for_each(|j| {
-                    row[j] = self.cells[j][i];
-                });
-
-                let moved = shift_row(&mut row);
-
-                (0..ROWS).for_each(|j| {
-                    self.cells[j][i] = row[j];
+        self.columns()
+            .enumerate()
+            .map(|(i, mut column)| {
+                let moved = shift_row(&mut column);
+                column.into_iter().enumerate().for_each(|(j, cell)| {
+                    self[j][i] = cell;
                 });
 
                 moved
             })
-            .max()
-            .unwrap_or(false)
+            .fold(false, bool::max)
     }
 
     #[inline(always)]
     pub fn swipe_down(&mut self) -> bool {
-        (0..COLS)
-            .map(|i| {
-                let mut row = [0; ROWS];
-                (0..ROWS).for_each(|j| {
-                    row[j] = self.cells[j][i];
+        self.columns()
+            .enumerate()
+            .map(|(i, mut column)| {
+                column.reverse();
+                let moved = shift_row(&mut column);
+                column.into_iter().rev().enumerate().for_each(|(j, cell)| {
+                    self[j][i] = cell;
                 });
 
-                row.reverse();
-                let moved = shift_row(&mut row);
-                row.reverse();
-
-                (0..ROWS).for_each(|j| {
-                    self.cells[j][i] = row[j];
-                });
                 moved
             })
-            .max()
-            .unwrap_or(false)
+            .fold(false, bool::max)
     }
 
     #[inline(always)]
     pub fn is_lost(&self) -> bool {
-        (0..ROWS - 1).all(|i| (0..COLS).all(|j| self.cells[i][j] != self.cells[i + 1][j]))
-            && (0..ROWS).all(|i| (0..COLS - 1).all(|j| self.cells[i][j] != self.cells[i][j + 1]))
-            && self.cells.iter().flatten().all(|&x| x != 0)
+        !self.has_move()
+    }
+
+    pub fn has_move(&self) -> bool {
+        self.iter().flatten().any(|&x| x == 0)
+            || (0..ROWS - 1).any(|i| (0..COLS).any(|j| self[i][j] == self[i + 1][j]))
+            || (0..ROWS).any(|i| (0..COLS - 1).any(|j| self[i][j] == self[i][j + 1]))
     }
 
     #[inline(always)]
@@ -175,43 +164,69 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
             Direction::Down => self.swipe_down(),
         }
     }
+
+    pub fn columns(self) -> impl Iterator<Item = [Cell; ROWS]> {
+        (0..COLS).map(move |i| array::from_fn(|j| self[j][i]))
+    }
+
+    pub fn rows(self) -> impl Iterator<Item = [Cell; COLS]> {
+        self.into_iter()
+    }
 }
 
 impl<const COLS: usize, const ROWS: usize> fmt::Display for Board<COLS, ROWS> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut iter = self.cells.iter().peekable();
-
-        while let Some(row) = iter.next() {
+        // Print the first row without nextline
+        if let Some(row) = self.first() {
             format_row(row, f)?;
-            if iter.peek().is_some() {
-                writeln!(f)?;
-            }
+        }
+
+        for row in &self[1..] {
+            writeln!(f)?;
+            format_row(row, f)?;
         }
 
         Ok(())
     }
 }
 
-fn format_row(last_row: &[u8], f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-    last_row.iter().try_for_each(|cell| {
-        f.write_char(match cell {
+fn format_row(last_row: &[Cell], f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    for cell in last_row {
+        let cell_char = match cell {
             0 => b'.',
-            1..=9 => b'0' + cell,
+            1..=9 => cell + b'0',
             _ => cell - 10 + b'a',
-        } as char)?;
+        } as char;
 
-        f.write_char(' ')
-    })
+        f.write_char(cell_char)?;
+        f.write_char(' ')?;
+    }
+
+    Ok(())
 }
 
-impl<const COLS: usize, const ROWS: usize> From<[[u8; COLS]; ROWS]> for Board<COLS, ROWS> {
-    fn from(cells: [[u8; COLS]; ROWS]) -> Self {
+impl<const COLS: usize, const ROWS: usize> From<[[Cell; COLS]; ROWS]> for Board<COLS, ROWS> {
+    fn from(cells: [[Cell; COLS]; ROWS]) -> Self {
         Self { cells }
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> From<Board<COLS, ROWS>> for [[u8; COLS]; ROWS] {
+impl<const COLS: usize, const ROWS: usize> From<Board<COLS, ROWS>> for [[Cell; COLS]; ROWS] {
     fn from(board: Board<COLS, ROWS>) -> Self {
-        board.cells
+        *board
+    }
+}
+
+impl<const COLS: usize, const ROWS: usize> Deref for Board<COLS, ROWS> {
+    type Target = [[Cell; COLS]; ROWS];
+
+    fn deref(&self) -> &Self::Target {
+        &self.cells
+    }
+}
+
+impl<const COLS: usize, const ROWS: usize> DerefMut for Board<COLS, ROWS> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.cells
     }
 }

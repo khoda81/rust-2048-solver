@@ -1,7 +1,7 @@
 use std::num::NonZeroU8;
 
 type Block = NonZeroU8;
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 struct Row<const SIZE: usize>([Option<Block>; SIZE]);
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -69,6 +69,7 @@ impl<const SIZE: usize> Row<SIZE> {
                 result.handle_move()
             }
         }
+
         self.0 = cells;
 
         result

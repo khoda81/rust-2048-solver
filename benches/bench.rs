@@ -6,7 +6,7 @@ mod benches {
 
     use rust_2048_solver::{
         board::{Board, Direction},
-        bots::dfs::MeanMax,
+        bots::dfs::{MeanMax, SearchConstraint},
     };
 
     use test::{black_box, Bencher};
@@ -37,9 +37,13 @@ mod benches {
         println!("{board}");
         b.iter(|| {
             ai.player_cache.clear();
-            let result = ai
-                .evaluate_for_player(&board, 4)
-                .expect("we should not reach the deadline");
+
+            let search_constrain = SearchConstraint {
+                max_depth: 4,
+                ..Default::default()
+            };
+
+            let result = ai.search_until(&board, search_constrain);
 
             black_box(result);
             // show_fill_percent(&ai);

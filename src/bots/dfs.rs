@@ -72,7 +72,9 @@ impl Logger {
 
     fn log_search_start<T>(&self, _board: &T, _constraint: SearchConstraint) {}
 
-    fn log_search_end(&self, _result: &SearchResult<Direction>) {}
+    fn log_search_end(&self, result: &SearchResult<Direction>) {
+        println!("{result:.2?}");
+    }
 }
 
 pub struct MeanMax<const ROWS: usize, const COLS: usize> {
@@ -155,7 +157,7 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         }
     }
 
-    pub fn evaluate_for_player(
+    fn evaluate_for_player(
         &mut self,
         board: &Board<ROWS, COLS>,
         depth: u16,
@@ -185,25 +187,45 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
 
         self.logger.log_cache_miss(depth);
 
-        for action in [
+        if let Some(deadline) = self.deadline {
+            if Instant::now() >= deadline {
+                return Err(SearchError::TimeOut);
+            }
+        }
+
+        let all_actions = [
             Direction::Up,
             Direction::Down,
             Direction::Left,
             Direction::Right,
-        ] {
+        ];
+
+        for (action, reward, new_board) in all_actions.into_iter().filter_map(|action| {
             let mut new_board = *board;
-
-            if !new_board.swipe(action) {
-                continue;
-            }
-
             // TODO replace with the actual reward
             let reward = 1.0;
-            let value = self.evaluate_for_opponent(&new_board, depth - 1)? + reward;
+
+            new_board
+                .swipe(action)
+                .then_some((action, reward, new_board))
+        }) {
+            let mut weighted_avg = weighted_avg::WeightedAvg::<f32>::new();
+            let mut min_search_depth = u16::MAX;
+            for (board, weight) in new_board.spawns() {
+                let evaluation = self.evaluate_for_player(&board, depth - 1)?;
+                min_search_depth = min_search_depth.min(evaluation.depth);
+
+                weighted_avg.add_sample(evaluation.value, weight.into());
+            }
+
+            let value = weighted_avg.mean() + reward;
 
             if best_result.value <= value {
-                best_result.value = value;
-                best_result.action = action;
+                best_result = SearchResult {
+                    depth: min_search_depth.saturating_add(1),
+                    value,
+                    action,
+                };
             }
         }
 
@@ -213,31 +235,6 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         }
 
         Ok(best_result)
-    }
-
-    #[inline(always)]
-    pub fn evaluate_for_opponent(
-        &mut self,
-        board: &Board<ROWS, COLS>,
-        depth: u16,
-    ) -> Result<f32, SearchError> {
-        if let Some(_miss) = self
-            .deadline
-            .and_then(|deadline| Instant::now().checked_duration_since(deadline))
-        {
-            return Err(SearchError::TimeOut);
-        }
-
-        let mut weighted_avg = weighted_avg::WeightedAvg::new();
-
-        for (new_board, weight) in board.spawns() {
-            weighted_avg.add_sample(
-                self.evaluate_for_player(&new_board, depth)?.value as f64,
-                weight,
-            );
-        }
-
-        Ok(weighted_avg.mean() as f32)
     }
 
     pub fn search_until(
@@ -266,7 +263,6 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         }
     }
 
-    #[inline(always)]
     fn search_deeper(
         &mut self,
         prev_result: &SearchResult<Direction>,

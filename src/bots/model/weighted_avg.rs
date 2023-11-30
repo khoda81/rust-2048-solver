@@ -50,8 +50,11 @@ impl<T: MulAssign + Clone> WeightedAvg<T> {
     }
 }
 
-impl<T: Div<Output = T> + Clone> WeightedAvg<T> {
-    pub fn mean(&self) -> T {
+impl<T: Clone, W: Clone> WeightedAvg<T, W> {
+    pub fn mean<R>(&self) -> R
+    where
+        T: Div<W, Output = R>,
+    {
         self.total_value.clone() / self.total_weight.clone()
     }
 }
