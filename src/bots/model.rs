@@ -37,21 +37,33 @@ impl<I: hash::Hash + cmp::Eq, P: Default + Ord> WeightedAvgModel<I, P> {
         self.memory.get(inp).map(|entry| entry.value.mean())
     }
 
-    pub fn learn(&mut self, input: I, value: f64, priority: P) {
-        self.weighted_learn(input, value, 1.0, priority)
+    pub fn insert(&mut self, input: I, value: f64) {
+        self.insert_with_priority(input, value, P::default())
     }
 
-    pub fn weighted_learn(&mut self, input: I, value: f64, weight: f64, priority: P) {
-        self.weighted_learn_with_decay(input, value, weight, priority, 1.0)
+    fn insert_with_priority(&mut self, input: I, value: f64, priority: P) {
+        self.weighted_insert_with_priority(input, value, 1.0, priority)
     }
 
-    pub fn weighted_learn_with_decay(
+    pub fn weighted_insert(&mut self, input: I, value: f64, weight: f64) {
+        self.weighted_insert_with_priority(input, value, weight, P::default())
+    }
+
+    fn weighted_insert_with_priority(&mut self, input: I, value: f64, weight: f64, priority: P) {
+        self.weighted_insert_with_decay_and_priority(input, value, weight, 1.0, priority)
+    }
+
+    pub fn weighted_insert_with_decay(&mut self, input: I, value: f64, weight: f64, decay: f64) {
+        self.weighted_insert_with_decay_and_priority(input, value, weight, decay, P::default())
+    }
+
+    fn weighted_insert_with_decay_and_priority(
         &mut self,
         input: I,
         value: f64,
         weight: f64,
-        priority: P,
         decay: f64,
+        priority: P,
     ) {
         let entry = self.memory.entry(input).or_default();
 

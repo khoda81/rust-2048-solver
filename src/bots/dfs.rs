@@ -1,5 +1,5 @@
 use crate::{
-    board::{Board, Direction},
+    board::{Board, Cell, Direction},
     bots::{
         heuristic,
         model::{weighted_avg, WeightedAvgModel},
@@ -12,7 +12,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::model::weighted_avg::WeightedAvg;
+use super::{
+    heuristic::{EmptyCount, MaxCell},
+    model::weighted_avg::WeightedAvg,
+};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct SearchResult<A> {
@@ -30,8 +33,8 @@ pub enum SearchError {
 impl fmt::Display for SearchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SearchError::TimeOut => write!(f, "reached deadline before finishing computation"),
-            SearchError::AtMaximumDepth => write!(f, "we are already at maximum depth"),
+            SearchError::TimeOut => write!(f, "reached deadline before finishing search"),
+            SearchError::AtMaximumDepth => write!(f, "already at maximum depth"),
         }
     }
 }
@@ -54,13 +57,13 @@ impl Logger {
     }
 
     fn log_cache_hit(&mut self, depth: u16, result: &SearchResult<Direction>) {
-        self.cache_hit_chance_model.learn(depth, 1.0, ());
+        self.cache_hit_chance_model.insert(depth, 1.0);
         self.cache_hit_depth_model
-            .learn(depth, result.depth.into(), ());
+            .insert(depth, result.depth.into());
     }
 
     fn log_cache_miss(&mut self, depth: u16) {
-        self.cache_hit_chance_model.learn(depth, 0.0, ());
+        self.cache_hit_chance_model.insert(depth, 0.0);
     }
 
     fn log_search_result(&self, result: &SearchResult<Direction>) {
@@ -123,8 +126,8 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
 
     fn preprocess_for_model(board: &Board<ROWS, COLS>) -> heuristic::PreprocessedBoard {
         (
-            board.count_empty() as u32,
-            *board.cells.iter().flatten().max().unwrap() as u32,
+            EmptyCount(board.count_empty() as u8),
+            MaxCell(*board.cells.iter().flatten().max().unwrap() as Cell),
         )
     }
 
@@ -136,7 +139,7 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         let decay = 0.999;
 
         self.model
-            .weighted_learn_with_decay(prerocessed_board, value, weight, (), decay)
+            .weighted_insert_with_decay(prerocessed_board, value, weight, decay)
     }
 
     pub fn heuristic(&self, board: &Board<ROWS, COLS>) -> f64 {
@@ -275,9 +278,14 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
             .map(|deadline| deadline - Duration::from_micros(3));
 
         let new_depth = prev_result.depth.checked_add(1);
-        let new_depth = new_depth
+        let mut new_depth = new_depth
             .filter(|&depth| (depth as usize) <= constraint.max_depth)
             .ok_or(SearchError::AtMaximumDepth)?;
+
+        if self.deadline.is_none() {
+            let max_depth = constraint.max_depth.min(u16::MAX as usize) as u16;
+            new_depth = new_depth.max(max_depth);
+        }
 
         self.evaluate_for_player(board, new_depth)
     }

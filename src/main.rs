@@ -12,7 +12,7 @@ use std::{
 use rust_2048_solver::{
     bots::{
         self,
-        dfs::SearchConstraint,
+        dfs::{SearchConstraint, SearchResult},
         heuristic,
         model::{weighted_avg, WeightedAvgModel},
     },
@@ -59,13 +59,23 @@ fn main() {
     let mut game = game::Game::<4, 4>::create();
     let mut ai = bots::dfs::MeanMax::new();
 
-    ai.logger.print_search_results = true;
+    // ai.logger.print_search_results = true;
+    let mut last_eval = f32::MAX;
 
     loop {
         println!("{}", game.board);
 
-        let timeout = Duration::from_secs_f64(0.2);
-        let deadline = Instant::now() + timeout;
+        let search_duration = match last_eval as u32 {
+            0..=20 => Duration::from_secs_f64(20.0),
+            21..=50 => Duration::from_secs_f64(10.0),
+            51..=100 => Duration::from_secs_f64(5.0),
+            101..=200 => Duration::from_secs_f64(1.5),
+            201..=500 => Duration::from_secs_f64(0.2),
+            501..=1000 => Duration::from_secs_f64(0.1),
+            _ => Duration::from_secs_f64(0.1),
+        };
+
+        let deadline = Instant::now() + search_duration;
 
         #[allow(clippy::needless_update)]
         let search_constraint = SearchConstraint {
@@ -75,7 +85,12 @@ fn main() {
             ..Default::default()
         };
 
-        let action = ai.act(&game.board, search_constraint);
+        let SearchResult {
+            depth: _,
+            value,
+            action,
+        } = ai.search_until(&game.board, search_constraint);
+        last_eval = value;
 
         // TODO: Move search info logic to the logger
         let now = Instant::now();
@@ -99,6 +114,8 @@ fn main() {
 
         // print_lookup(&ai);
 
+        print_model(&ai.model);
+
         println!("{action}");
         if !game.step(action) {
             break;
@@ -107,6 +124,23 @@ fn main() {
 
     println!("{}", game.board);
     // print_lookup(&ai);
+}
+
+fn print_model<K: Debug + Ord>(model: &WeightedAvgModel<K>) {
+    model
+        .memory
+        .iter()
+        .sorted_by(|(k1, _), (k2, _)| k1.cmp(k2))
+        .for_each(|(key, value)| {
+            print!("{key:2?}: ");
+            let eval = value.value;
+            println!(
+                "{:.2} ({:.0}/{:.0})",
+                eval.mean(),
+                eval.total_value,
+                eval.total_weight
+            );
+        });
 }
 
 pub fn get_signed_duration(seconds: f64) -> Signed<Duration> {

@@ -6,7 +6,7 @@ use rand::{
     Rng,
 };
 
-use crate::{algebra, board, utils};
+use crate::{board, utils};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
@@ -64,33 +64,6 @@ impl<const COLS: usize, const ROWS: usize> From<board::Board<COLS, ROWS>>
     }
 }
 
-fn gen_indices(
-    rows: usize,
-    cols: usize,
-    transform: algebra::Dihedral<4>,
-) -> Box<dyn Iterator<Item = (usize, usize)>> {
-    fn idx_iter(end: usize, increasing: bool) -> Box<dyn Iterator<Item = usize>> {
-        if increasing {
-            Box::new(0..end)
-        } else {
-            Box::new((0..end).rev())
-        }
-    }
-
-    let row_inc = (transform.rot + 1) % 4 <= 1;
-    let col_inc = transform.rot % 4 <= 1;
-
-    if transform.is_horizontal() {
-        Box::new(
-            idx_iter(rows, row_inc).flat_map(move |r| idx_iter(cols, col_inc).map(move |c| (r, c))),
-        )
-    } else {
-        Box::new(
-            idx_iter(cols, col_inc).flat_map(move |c| idx_iter(rows, row_inc).map(move |r| (r, c))),
-        )
-    }
-}
-
 impl<const COLS: usize, const ROWS: usize> From<[[u8; COLS]; ROWS]> for SymmetricBoard<COLS, ROWS> {
     fn from(board: [[u8; COLS]; ROWS]) -> Self {
         let mut max_iter = utils::MaxIter::new();
@@ -145,7 +118,7 @@ mod test_super {
             [2, 0, 0, 0],
         ]);
 
-        let sym_board = SymmetricBoard::from(board.clone());
+        let sym_board = SymmetricBoard::from(board);
         println!("{sym_board}");
     }
 }

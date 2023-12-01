@@ -54,8 +54,8 @@ impl<const COLS: usize, const ROWS: usize> Default for Board<COLS, ROWS> {
     }
 }
 
-type Weight = u8;
-type Cell = u8;
+pub type Weight = u8;
+pub type Cell = u8;
 
 #[allow(clippy::unnecessary_fold)]
 impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
