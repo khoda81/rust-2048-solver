@@ -1,30 +1,31 @@
 // TODO rename to models
 
 use std::{
-    cmp::{self, Ordering},
+    cmp,
     collections::HashMap,
     fmt::{Display, Write},
     hash,
+    ops::{AddAssign, Deref, DerefMut},
 };
 
 use itertools::Itertools;
 
 pub mod preprocessor;
-pub mod weighted_avg;
+pub mod prioritized;
+pub mod weighted;
 
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
-pub struct EvaluationEntry<P, V> {
-    pub priority: P,
-    pub value: V,
+#[derive(Clone, Debug)]
+pub struct AccumulationModel<K, V> {
+    pub memory: HashMap<K, V>,
 }
 
-// TODO: make this generic over the numeric type of weighted avg
-#[derive(Clone, Debug, Default)]
-pub struct WeightedAvgModel<I, P = ()> {
-    pub memory: HashMap<I, EvaluationEntry<P, weighted_avg::WeightedAvg>>,
+impl<K, V> Default for AccumulationModel<K, V> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
-impl<X, P> WeightedAvgModel<X, P> {
+impl<K, V> AccumulationModel<K, V> {
     pub fn new() -> Self {
         Self {
             memory: HashMap::new(),
@@ -32,56 +33,17 @@ impl<X, P> WeightedAvgModel<X, P> {
     }
 }
 
-impl<I: hash::Hash + cmp::Eq, P: Default + Ord> WeightedAvgModel<I, P> {
-    pub fn evaluate(&self, inp: &I) -> Option<f64> {
-        self.memory.get(inp).map(|entry| entry.value.mean())
-    }
-
-    pub fn insert(&mut self, input: I, value: f64) {
-        self.insert_with_priority(input, value, P::default())
-    }
-
-    fn insert_with_priority(&mut self, input: I, value: f64, priority: P) {
-        self.weighted_insert_with_priority(input, value, 1.0, priority)
-    }
-
-    pub fn weighted_insert(&mut self, input: I, value: f64, weight: f64) {
-        self.weighted_insert_with_priority(input, value, weight, P::default())
-    }
-
-    fn weighted_insert_with_priority(&mut self, input: I, value: f64, weight: f64, priority: P) {
-        self.weighted_insert_with_decay_and_priority(input, value, weight, 1.0, priority)
-    }
-
-    pub fn weighted_insert_with_decay(&mut self, input: I, value: f64, weight: f64, decay: f64) {
-        self.weighted_insert_with_decay_and_priority(input, value, weight, decay, P::default())
-    }
-
-    fn weighted_insert_with_decay_and_priority(
-        &mut self,
-        input: I,
-        value: f64,
-        weight: f64,
-        decay: f64,
-        priority: P,
-    ) {
-        let entry = self.memory.entry(input).or_default();
-
-        match priority.cmp(&entry.priority) {
-            Ordering::Less => {}
-            Ordering::Equal => {
-                entry.value.scale(decay);
-                entry.value.add_sample(value, weight);
-            }
-            Ordering::Greater => {
-                entry.value = weighted_avg::WeightedAvg::with_value(value, weight);
-                entry.priority = priority;
-            }
-        }
+impl<K, V> AccumulationModel<K, V>
+where
+    K: hash::Hash + cmp::Eq,
+    V: Default + AddAssign,
+{
+    pub fn insert(&mut self, key: K, value: V) {
+        self.memory.entry(key).or_default().add_assign(value)
     }
 }
 
-impl<I: Display + std::cmp::Ord, P> Display for WeightedAvgModel<I, P> {
+impl<K: Display + std::cmp::Ord, V: Display> Display for AccumulationModel<K, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.memory
             .iter()
@@ -89,8 +51,22 @@ impl<I: Display + std::cmp::Ord, P> Display for WeightedAvgModel<I, P> {
             .try_for_each(|(key, value)| {
                 key.fmt(f)?;
                 f.write_str(": ")?;
-                value.value.fmt(f)?;
+                value.fmt(f)?;
                 f.write_char('\n')
             })
+    }
+}
+
+impl<K, V> Deref for AccumulationModel<K, V> {
+    type Target = HashMap<K, V>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.memory
+    }
+}
+
+impl<K, V> DerefMut for AccumulationModel<K, V> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.memory
     }
 }

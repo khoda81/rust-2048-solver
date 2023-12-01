@@ -1,9 +1,10 @@
 use crate::{
     board::{Board, Cell, Direction},
     bots::{
-        heuristic,
-        model::{weighted_avg, WeightedAvgModel},
+        heuristic::{self, EmptyCount, MaxCell},
+        model::{weighted::Weighted, AccumulationModel},
     },
+    utils,
 };
 
 use std::{
@@ -12,15 +13,17 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::{
-    heuristic::{EmptyCount, MaxCell},
-    model::weighted_avg::WeightedAvg,
-};
+const ALL_ACTIONS: [Direction; 4] = [
+    Direction::Up,
+    Direction::Down,
+    Direction::Left,
+    Direction::Right,
+];
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct SearchResult<A> {
-    pub depth: u16,
-    pub value: f32,
+    pub depth: Depth,
+    pub value: heuristic::Eval,
     pub action: A,
 }
 
@@ -39,51 +42,131 @@ impl fmt::Display for SearchError {
     }
 }
 
+pub type Depth = u8;
+pub const MAX_DEPTH: Depth = Depth::MAX;
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+struct SearchID(usize);
+pub struct SearchInfo {
+    pub constraint: SearchConstraint,
+    pub start_time: Instant,
+    pub end_time: Option<Instant>,
+}
+
 pub struct Logger {
-    pub cache_hit_chance_model: WeightedAvgModel<u16>,
-    pub cache_hit_depth_model: WeightedAvgModel<u16>,
-    pub deadline_miss_model: WeightedAvg,
+    pub cache_hit_chance_model: AccumulationModel<Depth, Weighted>,
+    pub cache_hit_depth_model: AccumulationModel<Depth, Weighted>,
+    pub deadline_miss_model: Weighted,
+    pub search_log: Vec<SearchInfo>,
     pub print_search_results: bool,
+    pub print_hit_info: bool,
 }
 
 impl Logger {
     fn new() -> Self {
         Logger {
-            cache_hit_chance_model: WeightedAvgModel::new(),
-            cache_hit_depth_model: WeightedAvgModel::new(),
-            deadline_miss_model: weighted_avg::WeightedAvg::new(),
+            cache_hit_chance_model: AccumulationModel::new(),
+            cache_hit_depth_model: AccumulationModel::new(),
+            deadline_miss_model: Weighted::default(),
+            search_log: Vec::new(),
             print_search_results: false,
+            print_hit_info: false,
         }
     }
 
-    fn log_cache_hit(&mut self, depth: u16, result: &SearchResult<Direction>) {
-        self.cache_hit_chance_model.insert(depth, 1.0);
-        self.cache_hit_depth_model
-            .insert(depth, result.depth.into());
+    fn register_cache_hit(&mut self, depth: Depth, result: &SearchResult<Direction>) {
+        let hit = Weighted::new(1.0);
+        self.cache_hit_chance_model.insert(depth, hit);
+        let hit_depth = Weighted::new(result.depth.into());
+        self.cache_hit_depth_model.insert(depth, hit_depth);
     }
 
-    fn log_cache_miss(&mut self, depth: u16) {
-        self.cache_hit_chance_model.insert(depth, 0.0);
+    fn register_cache_miss(&mut self, depth: Depth) {
+        let miss = Weighted::new(0.0);
+        self.cache_hit_chance_model.insert(depth, miss);
     }
 
-    fn log_search_result(&self, result: &SearchResult<Direction>) {
+    fn register_search_result(
+        &mut self,
+        result: &SearchResult<Direction>,
+        SearchID(_search_id): SearchID,
+    ) {
         if self.print_search_results {
-            // TODO implement logging
             println!("{result:.2?}");
         }
     }
 
-    fn log_search_start<T>(&self, _board: &T, _constraint: SearchConstraint) {}
+    fn register_search_start<T>(&mut self, _board: &T, constraint: SearchConstraint) -> SearchID {
+        let search_info = SearchInfo {
+            constraint,
+            start_time: Instant::now(),
+            end_time: None,
+        };
 
-    fn log_search_end(&self, result: &SearchResult<Direction>) {
+        self.search_log.push(search_info);
+        SearchID(self.search_log.len() - 1)
+    }
+
+    fn register_search_end(
+        &mut self,
+        result: &SearchResult<Direction>,
+        SearchID(search_id): SearchID,
+    ) {
+        let end_time = Instant::now();
         println!("{result:.2?}");
+
+        let search_info = match self.search_log.get_mut(search_id) {
+            Some(search_info) => search_info,
+            None => return,
+        };
+
+        search_info.end_time = Some(end_time);
+
+        if self.print_hit_info {
+            println!("Hit chance per depth:");
+            println!("{:.2}", self.cache_hit_chance_model);
+
+            println!("Hit depth per depth:");
+            println!("{:.2}", self.cache_hit_depth_model);
+        }
+
+        let deadline = match search_info.constraint.deadline {
+            Some(deadline) => deadline,
+            _ => return,
+        };
+
+        let miss_seconds = if deadline <= end_time {
+            (end_time - deadline).as_secs_f64()
+        } else {
+            -(deadline - end_time).as_secs_f64()
+        };
+
+        let avg_miss_seconds = self.deadline_miss_model.weighted_average();
+        let miss_err = (avg_miss_seconds - miss_seconds).abs();
+        let outlier_threshold = Duration::from_millis(5);
+        if miss_err.is_nan() || Duration::from_secs_f64(miss_err) <= outlier_threshold {
+            self.deadline_miss_model += Weighted::new(miss_seconds);
+        } else {
+            eprintln!(
+                "Ignoring miss since it has a high error ({miss_duration:?}>{outlier_threshold:?})",
+                miss_duration = Duration::from_secs_f64(miss_err),
+            );
+        }
+
+        let miss_duration = utils::get_signed_duration(miss_seconds);
+        println!("Deadline missed by {miss_duration:?}",);
+
+        let avg_miss_seconds = self.deadline_miss_model.weighted_average();
+        let avg_miss = utils::get_signed_duration(avg_miss_seconds);
+        println!("Avg miss: {avg_miss:?}");
     }
 }
 
+pub type Eval = Weighted<heuristic::Eval>;
 pub struct MeanMax<const ROWS: usize, const COLS: usize> {
     pub player_cache: lru::LruCache<Board<ROWS, COLS>, SearchResult<Direction>>,
     pub deadline: Option<Instant>,
-    pub model: WeightedAvgModel<heuristic::PreprocessedBoard>,
+    pub model: AccumulationModel<heuristic::PreprocessedBoard, Eval>,
     pub logger: Logger,
 }
 
@@ -109,7 +192,7 @@ impl<const ROWS: usize, const COLS: usize> Default for MeanMax<ROWS, COLS> {
 }
 
 impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
-    const DEFAULT_CACHE_SIZE: usize = 1_000_000;
+    const DEFAULT_CACHE_SIZE: usize = 10_000_000;
 
     pub fn new() -> Self {
         Self::new_with_cache_size(Self::DEFAULT_CACHE_SIZE.try_into().unwrap())
@@ -119,7 +202,7 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         Self {
             player_cache: lru::LruCache::new(capacity),
             deadline: None,
-            model: WeightedAvgModel::new(),
+            model: AccumulationModel::new(),
             logger: Logger::new(),
         }
     }
@@ -131,30 +214,32 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         )
     }
 
-    pub fn train_model(&mut self, board: &Board<ROWS, COLS>, value: f32, depth: u16) {
-        let value = value as f64;
-        let weight = 2.0_f64.powi(depth.into());
+    pub fn train_model(&mut self, board: &Board<ROWS, COLS>, value: heuristic::Eval, depth: Depth) {
+        let preprocessed_board = Self::preprocess_for_model(board);
+        let prev_eval = self.model.entry(preprocessed_board).or_default();
 
-        let prerocessed_board = Self::preprocess_for_model(board);
         let decay = 0.999;
+        prev_eval.total_value *= decay;
+        prev_eval.total_weight *= decay;
 
-        self.model
-            .weighted_insert_with_decay(prerocessed_board, value, weight, decay)
+        let weight = 2.0_f64.powi(depth.into()) as heuristic::Eval;
+        *prev_eval += Weighted::new_weighted(value, weight);
     }
 
-    pub fn heuristic(&self, board: &Board<ROWS, COLS>) -> f64 {
+    pub fn heuristic(&self, board: &Board<ROWS, COLS>) -> heuristic::Eval {
         // Preprocess the board for the model
         let preprocessed = Self::preprocess_for_model(board);
 
         self.model
-            .evaluate(&preprocessed)
+            .get(&preprocessed)
+            .map(|&eval| eval.weighted_average())
             .unwrap_or_else(|| heuristic::heuristic(preprocessed))
     }
 
     fn act_by_heuristic(&self, board: &Board<ROWS, COLS>) -> SearchResult<Direction> {
         SearchResult {
             depth: 0,
-            value: self.heuristic(board) as f32,
+            value: self.heuristic(board),
             // action without any search
             action: Direction::Up,
         }
@@ -163,18 +248,15 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
     fn evaluate_for_player(
         &mut self,
         board: &Board<ROWS, COLS>,
-        depth: u16,
+        depth: Depth,
     ) -> Result<SearchResult<Direction>, SearchError> {
-        let mut best_result = SearchResult {
-            depth,
-            value: 0.,
-            // action on terminal states
-            action: Direction::Up,
-        };
-
         if board.is_lost() {
-            best_result.depth = u16::MAX;
-            return Ok(best_result);
+            return Ok(SearchResult {
+                depth: MAX_DEPTH,
+                value: 0.,
+                // action on terminal states
+                action: Direction::Up,
+            });
         }
 
         if depth == 0 {
@@ -183,12 +265,12 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
 
         if let Some(result) = self.player_cache.get(board) {
             if result.depth >= depth {
-                self.logger.log_cache_hit(depth, result);
+                self.logger.register_cache_hit(depth, result);
                 return Ok(*result);
             }
         }
 
-        self.logger.log_cache_miss(depth);
+        self.logger.register_cache_miss(depth);
 
         if let Some(deadline) = self.deadline {
             if Instant::now() >= deadline {
@@ -196,14 +278,7 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
             }
         }
 
-        let all_actions = [
-            Direction::Up,
-            Direction::Down,
-            Direction::Left,
-            Direction::Right,
-        ];
-
-        for (action, reward, new_board) in all_actions.into_iter().filter_map(|action| {
+        let transitions = ALL_ACTIONS.into_iter().filter_map(|action| {
             let mut new_board = *board;
             // TODO replace with the actual reward
             let reward = 1.0;
@@ -211,17 +286,25 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
             new_board
                 .swipe(action)
                 .then_some((action, reward, new_board))
-        }) {
-            let mut weighted_avg = weighted_avg::WeightedAvg::<f32>::new();
-            let mut min_search_depth = u16::MAX;
+        });
+
+        let mut best_result = SearchResult {
+            depth,
+            value: 0.,
+            // action on terminal states
+            action: Direction::Up,
+        };
+
+        for (action, reward, new_board) in transitions {
+            let mut next_eval = Weighted::<heuristic::Eval>::default();
+            let mut min_search_depth = MAX_DEPTH;
             for (board, weight) in new_board.spawns() {
                 let evaluation = self.evaluate_for_player(&board, depth - 1)?;
                 min_search_depth = min_search_depth.min(evaluation.depth);
-
-                weighted_avg.add_sample(evaluation.value, weight.into());
+                next_eval += Weighted::new_weighted(evaluation.value, weight.into());
             }
 
-            let value = weighted_avg.mean() + reward;
+            let value = next_eval.weighted_average() + reward;
 
             if best_result.value <= value {
                 best_result = SearchResult {
@@ -245,21 +328,21 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         board: &Board<ROWS, COLS>,
         constraint: SearchConstraint,
     ) -> SearchResult<Direction> {
-        self.logger.log_search_start(board, constraint);
+        let search_id = self.logger.register_search_start(board, constraint);
 
         let cached_result = self.player_cache.get(board).cloned();
         let mut prev_result = cached_result.unwrap_or(self.act_by_heuristic(board));
 
-        self.logger.log_search_result(&prev_result);
+        self.logger.register_search_result(&prev_result, search_id);
 
         loop {
             match self.search_deeper(&prev_result, constraint, board) {
                 Ok(result) => {
-                    self.logger.log_search_result(&result);
+                    self.logger.register_search_result(&result, search_id);
                     prev_result = result;
                 }
                 Err(_err) => {
-                    self.logger.log_search_end(&prev_result);
+                    self.logger.register_search_end(&prev_result, search_id);
                     break prev_result;
                 }
             }
@@ -283,7 +366,7 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
             .ok_or(SearchError::AtMaximumDepth)?;
 
         if self.deadline.is_none() {
-            let max_depth = constraint.max_depth.min(u16::MAX as usize) as u16;
+            let max_depth = constraint.max_depth.min(MAX_DEPTH as usize) as Depth;
             new_depth = new_depth.max(max_depth);
         }
 

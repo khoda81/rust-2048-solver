@@ -11,13 +11,6 @@ mod benches {
 
     use test::{black_box, Bencher};
 
-    fn show_fill_percent(ai: &MeanMax<4, 4>) {
-        let capacity = ai.player_cache.cap().get();
-        let filled = ai.player_cache.len();
-        let fill_percent = (filled * 100) as f64 / capacity as f64;
-        println!("fill = {fill_percent:.2?}%",);
-    }
-
     #[bench]
     fn bench_search(b: &mut Bencher) {
         let mut ai = MeanMax::new();

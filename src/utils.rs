@@ -1,4 +1,13 @@
-use std::cmp;
+use std::{
+    self, cmp,
+    collections::HashMap,
+    fmt::{Debug, Display, Write},
+    time::Duration,
+};
+
+use itertools::Itertools;
+
+use crate::bots::{self, dfs::MeanMax, heuristic, model::AccumulationModel};
 
 /// Iterator is the lexicographic maximum of all the iterators added to it.
 ///
@@ -63,5 +72,83 @@ impl<T: Ord> Iterator for MaxIter<'_, T> {
             });
 
         max
+    }
+}
+
+pub fn show_fill_percent(ai: &MeanMax<4, 4>) {
+    let capacity = ai.player_cache.cap().get();
+    let filled = ai.player_cache.len();
+    let fill_percent = (filled * 100) as f64 / capacity as f64;
+    println!("fill = {fill_percent:.2?}%",);
+}
+
+pub fn print_model<K: Debug + Ord, V: Display>(model: &AccumulationModel<K, V>) {
+    model
+        .memory
+        .iter()
+        .sorted_by(|(k1, _), (k2, _)| k1.cmp(k2))
+        .for_each(|(key, value)| println!("{key:2?}: {value}"));
+}
+
+pub fn print_lookup<const ROWS: usize, const COLS: usize>(ai: &bots::dfs::MeanMax<ROWS, COLS>) {
+    let mut new_lookup = heuristic::get_lookup().clone();
+
+    for (key, eval) in ai.model.memory.iter() {
+        new_lookup.insert(*key, eval.weighted_average());
+    }
+
+    show_map(&new_lookup);
+}
+
+pub fn show_map<V: std::fmt::Debug>(map: &HashMap<heuristic::PreprocessedBoard, V>) {
+    for (key, value) in map
+        .iter()
+        .sorted_by_key(|(&(empty, max), _eval)| (max, empty))
+    {
+        println!("map.insert({key:2?}, {value:?});");
+        // println!("data[{key:?}] = {value}");
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum Signed<T> {
+    Positive(T),
+    Negative(T),
+}
+
+impl<T: Display> Display for Signed<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let inner = match self {
+            Signed::Positive(inner) => inner,
+            Signed::Negative(inner) => {
+                f.write_char('-')?;
+                inner
+            }
+        };
+
+        inner.fmt(f)
+    }
+}
+
+impl<T: Debug> Debug for Signed<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let inner = match self {
+            Signed::Positive(inner) => inner,
+            Signed::Negative(inner) => {
+                f.write_char('-')?;
+                inner
+            }
+        };
+
+        inner.fmt(f)
+    }
+}
+
+pub fn get_signed_duration(seconds: f64) -> Signed<Duration> {
+    let abs_duration = Duration::from_secs_f64(seconds.abs());
+    if seconds.is_sign_positive() {
+        Signed::Positive(abs_duration)
+    } else {
+        Signed::Negative(abs_duration)
     }
 }

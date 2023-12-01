@@ -10,7 +10,9 @@ pub struct EmptyCount(pub u8);
 pub struct MaxCell(pub Cell);
 pub type PreprocessedBoard = (EmptyCount, MaxCell);
 
-pub fn generate_lookup() -> HashMap<PreprocessedBoard, f64> {
+pub type Eval = f64;
+
+pub fn generate_lookup() -> HashMap<PreprocessedBoard, Eval> {
     let mut map = HashMap::new();
 
     map.insert((EmptyCount(11), MaxCell(1)), 3469.7003173828125);
@@ -157,14 +159,14 @@ pub fn generate_lookup() -> HashMap<PreprocessedBoard, f64> {
 }
 
 lazy_static! {
-    static ref PRE_LOOKUP: HashMap<PreprocessedBoard, f64> = generate_lookup();
+    static ref PRE_LOOKUP: HashMap<PreprocessedBoard, Eval> = generate_lookup();
 }
 
-pub fn get_lookup() -> &'static HashMap<PreprocessedBoard, f64> {
+pub fn get_lookup() -> &'static HashMap<PreprocessedBoard, Eval> {
     &PRE_LOOKUP
 }
 
-pub fn heuristic(preprocessed_board: PreprocessedBoard) -> f64 {
+pub fn heuristic(preprocessed_board: PreprocessedBoard) -> Eval {
     let (empty_count, _max_cell) = preprocessed_board;
 
     empty_count_max_cell_lookup(preprocessed_board)
@@ -172,11 +174,11 @@ pub fn heuristic(preprocessed_board: PreprocessedBoard) -> f64 {
         .unwrap_or_else(|| exponential_empty_count_heuristic(empty_count))
 }
 
-fn empty_count_max_cell_lookup(preprocessed_board: (EmptyCount, MaxCell)) -> Option<f64> {
+fn empty_count_max_cell_lookup(preprocessed_board: (EmptyCount, MaxCell)) -> Option<Eval> {
     get_lookup().get(&preprocessed_board).copied()
 }
 
-fn empty_count_lookup_table(EmptyCount(empty_count): EmptyCount) -> Option<f64> {
+fn empty_count_lookup_table(EmptyCount(empty_count): EmptyCount) -> Option<Eval> {
     [
         15.82, 35.14, 752.49, 633.58, 1909.69, 3259.14, 3320.45, 3356.29, 3388.47, 3388.15,
         3446.54, 3541.35, 4071.11, 4961.21, 7341.16, 9085.73,
@@ -185,6 +187,6 @@ fn empty_count_lookup_table(EmptyCount(empty_count): EmptyCount) -> Option<f64> 
     .copied()
 }
 
-fn exponential_empty_count_heuristic(EmptyCount(empty_count): EmptyCount) -> f64 {
-    2_usize.pow((empty_count + 1) as u32) as f64
+fn exponential_empty_count_heuristic(EmptyCount(empty_count): EmptyCount) -> Eval {
+    2_usize.pow((empty_count + 1) as u32) as Eval
 }
