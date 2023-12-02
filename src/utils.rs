@@ -94,7 +94,7 @@ pub fn print_lookup<const ROWS: usize, const COLS: usize>(ai: &bots::dfs::MeanMa
     let mut new_lookup = heuristic::get_lookup().clone();
 
     for (key, eval) in ai.model.memory.iter() {
-        new_lookup.insert(*key, eval.weighted_average());
+        new_lookup.insert(*key, eval.average_value());
     }
 
     show_map(&new_lookup);

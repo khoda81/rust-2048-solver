@@ -24,7 +24,8 @@ fn main() {
     let mut game = game::Game::<4, 4>::create();
     let mut ai = bots::dfs::MeanMax::new();
 
-    ai.logger.print_search_results = true;
+    ai.logger.print_search_results = false;
+    ai.logger.print_hit_info = true;
     let mut search_duration = Duration::from_secs_f64(0.1);
 
     loop {
@@ -40,13 +41,9 @@ fn main() {
             ..Default::default()
         };
 
-        let SearchResult {
-            depth: _,
-            value,
-            action,
-        } = ai.search_until(&game.board, search_constraint);
+        let SearchResult { eval, action } = ai.search_until(&game.board, search_constraint);
 
-        search_duration = match value as u32 {
+        search_duration = match eval.value as u32 {
             0..=20 => Duration::from_secs_f64(20.0),
             21..=50 => Duration::from_secs_f64(10.0),
             51..=100 => Duration::from_secs_f64(5.0),
