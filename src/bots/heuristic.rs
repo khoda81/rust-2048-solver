@@ -2,15 +2,23 @@ use std::collections::HashMap;
 
 use lazy_static::lazy_static;
 
-use crate::board::Cell;
+use crate::board::{Board, Cell};
 
 #[derive(Copy, Clone, Debug, Hash, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EmptyCount(pub u8);
 #[derive(Copy, Clone, Debug, Hash, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MaxCell(pub Cell);
 pub type PreprocessedBoard = (EmptyCount, MaxCell);
-
 pub type Eval = f64;
+
+pub fn preprocess_board<const ROWS: usize, const COLS: usize>(
+    board: &Board<ROWS, COLS>,
+) -> (EmptyCount, MaxCell) {
+    (
+        EmptyCount(board.count_empty() as u8),
+        MaxCell(board.into_iter().flatten().max().unwrap() as Cell),
+    )
+}
 
 pub fn generate_lookup() -> HashMap<PreprocessedBoard, Eval> {
     let mut map = HashMap::new();

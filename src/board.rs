@@ -4,11 +4,13 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+use rand::seq::SliceRandom;
 use rand::{
     distributions::{Distribution, Standard, WeightedIndex},
     Rng,
 };
 
+use crate::game::Transition;
 use crate::shift_row::shift_row;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -43,9 +45,42 @@ impl fmt::Display for Direction {
     }
 }
 
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+// TODO: use strum instead
+const ALL_ACTIONS: [Direction; 4] = [
+    Direction::Up,
+    Direction::Down,
+    Direction::Left,
+    Direction::Right,
+];
+
+pub type Weight = u8;
+pub type Cell = u8;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Board<const COLS: usize, const ROWS: usize> {
     pub cells: [[Cell; COLS]; ROWS],
+}
+
+impl<const COLS: usize, const ROWS: usize> std::hash::Hash for Board<COLS, ROWS> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let cells = self.cells.flatten();
+        let chunks = cells.chunks_exact(8);
+
+        let remainder = chunks.remainder();
+
+        let mut last_chunk = [0; 8];
+        last_chunk[..remainder.len()].copy_from_slice(remainder);
+        let remainder = (!remainder.is_empty()).then_some(last_chunk.as_slice());
+
+        chunks
+            .chain(remainder)
+            .map(|chunk| {
+                // SAFETY: this is safe since using [`<[_]>::chunks_exact`] with size 8
+                unsafe { chunk.try_into().unwrap_unchecked() }
+            })
+            .map(u64::from_ne_bytes)
+            .for_each(|chunk| chunk.hash(state));
+    }
 }
 
 impl<const COLS: usize, const ROWS: usize> Default for Board<COLS, ROWS> {
@@ -53,9 +88,6 @@ impl<const COLS: usize, const ROWS: usize> Default for Board<COLS, ROWS> {
         Self::new()
     }
 }
-
-pub type Weight = u8;
-pub type Cell = u8;
 
 #[allow(clippy::unnecessary_fold)]
 impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
@@ -68,8 +100,29 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
         self.iter().flatten().filter(|&c| c == &0).count()
     }
 
+    // TODO: move this to game
+    pub fn iter_transitions(&self) -> impl Iterator<Item = Transition<Self, Direction>> + '_ {
+        ALL_ACTIONS.into_iter().filter_map(|action| {
+            self.swiped(action).map(|new_state| {
+                // TODO replace with the actual reward
+                let reward = 1.0;
+
+                Transition {
+                    action,
+                    reward,
+                    new_state,
+                }
+            })
+        })
+    }
+
     #[inline(always)]
-    pub fn spawns(&self) -> impl Iterator<Item = (Self, Weight)> + '_ {
+    pub fn spawns(&self) -> impl Iterator<Item = (Self, Weight)> {
+        self.iter_spawns()
+    }
+
+    #[inline(always)]
+    pub fn iter_spawns(self) -> impl Iterator<Item = (Self, Weight)> {
         self.into_iter()
             .enumerate()
             .flat_map(|(i, row)| {
@@ -77,13 +130,32 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
                     .enumerate()
                     .filter_map(move |(j, cell)| (cell == 0).then_some((i, j)))
             })
-            .flat_map(|(i, j)| {
+            .flat_map(move |(i, j)| {
                 [(1, 2), (2, 1)].map(|(cell, weight)| {
-                    let mut new_board = self.cells;
-                    new_board[i][j] = cell;
-                    (new_board.into(), weight)
+                    let mut new_board = self;
+                    new_board.cells[i][j] = cell;
+                    (new_board, weight)
                 })
             })
+    }
+
+    #[inline(always)]
+    pub fn iter_spawns_random(self) -> impl Iterator<Item = (Self, Weight)> {
+        let mut positions = Vec::with_capacity(16);
+        positions.extend(self.into_iter().enumerate().flat_map(|(i, row)| {
+            row.into_iter()
+                .enumerate()
+                .filter_map(move |(j, cell)| (cell == 0).then_some((i, j)))
+        }));
+
+        positions.shuffle(&mut rand::thread_rng());
+        positions.into_iter().flat_map(move |(i, j)| {
+            [(1, 2), (2, 1)].map(|(cell, weight)| {
+                let mut new_board = self;
+                new_board.cells[i][j] = cell;
+                (new_board, weight)
+            })
+        })
     }
 
     #[inline(always)]
@@ -163,6 +235,17 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
             Direction::Up => self.swipe_up(),
             Direction::Down => self.swipe_down(),
         }
+    }
+
+    #[inline(always)]
+    pub fn swiped(mut self, direction: Direction) -> Option<Self> {
+        match direction {
+            Direction::Left => self.swipe_left(),
+            Direction::Right => self.swipe_right(),
+            Direction::Up => self.swipe_up(),
+            Direction::Down => self.swipe_down(),
+        }
+        .then_some(self)
     }
 
     pub fn columns(self) -> impl Iterator<Item = [Cell; ROWS]> {

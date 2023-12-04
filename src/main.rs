@@ -21,11 +21,11 @@ use rust_2048_solver::{
 fn main() {
     // show_map(heuristic::get_lookup());
 
-    let mut game = game::Game::<4, 4>::create();
+    let mut game = game::GameOf2048::<4, 4>::create();
     let mut ai = bots::dfs::MeanMax::new();
 
-    ai.logger.print_search_results = false;
-    ai.logger.print_hit_info = true;
+    ai.logger.print_search_results = true;
+    ai.logger.print_hit_info = false;
     let mut search_duration = Duration::from_secs_f64(0.1);
 
     loop {
@@ -52,6 +52,8 @@ fn main() {
             501..=1000 => Duration::from_secs_f64(0.2),
             _ => Duration::from_secs_f64(0.1),
         };
+
+        // search_duration = Duration::from_secs_f64(60.0);
 
         // utils::print_lookup(&ai);
         // utils::print_model(&ai.model);
