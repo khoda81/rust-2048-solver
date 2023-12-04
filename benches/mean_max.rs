@@ -6,7 +6,7 @@ mod benches {
 
     use rust_2048_solver::{
         board::Board,
-        bots::dfs::{MeanMax, SearchConstraint},
+        bots::mean_max::{MeanMax, SearchConstraint},
     };
 
     use test::{black_box, Bencher};

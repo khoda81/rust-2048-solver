@@ -7,7 +7,7 @@ use std::{
 
 use itertools::Itertools;
 
-use crate::bots::{self, dfs::MeanMax, heuristic, model::AccumulationModel};
+use crate::bots::{self, heuristic, mean_max::MeanMax, model::AccumulationModel};
 
 /// Iterator is the lexicographic maximum of all the iterators added to it.
 ///
@@ -90,7 +90,9 @@ pub fn print_model<K: Debug + Ord, V: Display>(model: &AccumulationModel<K, V>) 
         .for_each(|(key, value)| println!("{key:2?}: {value}"));
 }
 
-pub fn print_lookup<const ROWS: usize, const COLS: usize>(ai: &bots::dfs::MeanMax<ROWS, COLS>) {
+pub fn print_lookup<const ROWS: usize, const COLS: usize>(
+    ai: &bots::mean_max::MeanMax<ROWS, COLS>,
+) {
     let mut new_lookup = heuristic::get_lookup().clone();
 
     for (key, eval) in ai.model.memory.iter() {

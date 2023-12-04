@@ -12,7 +12,7 @@ use std::{
 use rust_2048_solver::{
     bots::{
         self,
-        dfs::{SearchConstraint, SearchResult},
+        mean_max::{SearchConstraint, SearchResult},
         model::weighted::{self, Weighted},
     },
     game, utils,
@@ -22,7 +22,7 @@ fn main() {
     // show_map(heuristic::get_lookup());
 
     let mut game = game::GameOf2048::<4, 4>::create();
-    let mut ai = bots::dfs::MeanMax::new();
+    let mut ai = bots::mean_max::MeanMax::new();
 
     ai.logger.print_search_results = true;
     ai.logger.print_hit_info = false;
