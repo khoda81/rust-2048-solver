@@ -305,7 +305,7 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
             });
         }
 
-        if depth > 2 {
+        if depth > 1 {
             if let Some(eval) = self.lookup_in_cache(board, depth) {
                 return Ok(eval);
             }
@@ -321,7 +321,7 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
 
         let eval = eval.ok_or(SearchError::SearchingOnLostState)?;
 
-        if eval.depth > 2 {
+        if eval.depth > 1 {
             self.evaluation_cache.put(*board, eval);
         }
 

@@ -1,4 +1,4 @@
-#![feature(slice_flatten)]
+// #![feature(slice_flatten)]
 
 pub mod board;
 pub mod shift_row;
