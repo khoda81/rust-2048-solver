@@ -12,7 +12,7 @@ use std::{
 use rust_2048_solver::{
     bots::{
         self,
-        mean_max::{SearchConstraint, SearchResult},
+        mean_max::{EvaluatedAction, SearchConstraint},
         model::weighted::{self, Weighted},
     },
     game, utils,
@@ -24,8 +24,8 @@ fn main() {
     let mut game = game::GameOf2048::<4, 4>::create();
     let mut ai = bots::mean_max::MeanMax::new();
 
-    ai.logger.print_search_results = true;
-    ai.logger.print_hit_info = false;
+    ai.logger.log_search_results = true;
+    ai.logger.log_hit_info = true;
     let mut search_duration = Duration::from_secs_f64(0.1);
 
     loop {
@@ -41,7 +41,7 @@ fn main() {
             ..Default::default()
         };
 
-        let SearchResult { eval, action } = ai.search_until(&game.board, search_constraint);
+        let EvaluatedAction { eval, action } = ai.search_until(&game.board, search_constraint);
 
         search_duration = match eval.value as u32 {
             0..=20 => Duration::from_secs_f64(20.0),
@@ -57,6 +57,7 @@ fn main() {
 
         // utils::print_lookup(&ai);
         // utils::print_model(&ai.model);
+        utils::show_fill_percent(&ai);
 
         println!("{action}");
         if !game.step(action) {

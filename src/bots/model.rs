@@ -2,7 +2,7 @@
 
 use std::{
     cmp,
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap},
     fmt::{Display, Write},
     hash,
     ops::{AddAssign, Deref, DerefMut},
@@ -36,17 +36,21 @@ impl<K, V> AccumulationModel<K, V> {
 impl<K, V> AccumulationModel<K, V>
 where
     K: hash::Hash + cmp::Eq,
-    V: Default + AddAssign,
+    V: AddAssign,
 {
-    pub fn insert(&mut self, key: K, value: V) {
-        self.memory.entry(key).or_default().add_assign(value)
+    pub fn add_to(&mut self, key: K, value: V) {
+        match self.entry(key) {
+            Entry::Occupied(mut occupied_entry) => occupied_entry.get_mut().add_assign(value),
+            Entry::Vacant(vacant_entry) => {
+                vacant_entry.insert(value);
+            }
+        }
     }
 }
 
 impl<K: Display + std::cmp::Ord, V: Display> Display for AccumulationModel<K, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.memory
-            .iter()
+        self.iter()
             .sorted_by(|(k1, _), (k2, _)| k1.cmp(k2))
             .try_for_each(|(key, value)| {
                 key.fmt(f)?;

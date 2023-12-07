@@ -76,10 +76,10 @@ impl<T: Ord> Iterator for MaxIter<'_, T> {
 }
 
 pub fn show_fill_percent(ai: &MeanMax<4, 4>) {
-    let capacity = ai.player_cache.cap().get();
-    let filled = ai.player_cache.len();
+    let capacity = ai.evaluation_cache.cap().get();
+    let filled = ai.evaluation_cache.len();
     let fill_percent = (filled * 100) as f64 / capacity as f64;
-    println!("fill = {fill_percent:.2?}%",);
+    println!("Evaluation cache is {fill_percent:.2?}% filled",);
 }
 
 pub fn print_model<K: Debug + Ord, V: Display>(model: &AccumulationModel<K, V>) {
