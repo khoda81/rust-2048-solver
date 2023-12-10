@@ -12,7 +12,7 @@ use std::{
 use rust_2048_solver::{
     bots::{
         self,
-        mean_max::{EvaluatedAction, SearchConstraint},
+        mean_max::{Bound, EvaluatedAction, SearchConstraint},
         model::weighted::{self, Weighted},
     },
     game, utils,
@@ -25,7 +25,7 @@ fn main() {
     let mut ai = bots::mean_max::MeanMax::new();
 
     ai.logger.log_search_results = true;
-    ai.logger.log_hit_info = true;
+    ai.logger.log_hit_info = false;
     let mut search_duration = Duration::from_secs_f64(0.1);
 
     loop {
@@ -36,7 +36,7 @@ fn main() {
         #[allow(clippy::needless_update)]
         let search_constraint = SearchConstraint {
             deadline: Some(deadline),
-            // max_depth: 3,
+            // max_depth: Bound::new(3),
             // Set the remaining values to defaults
             ..Default::default()
         };
@@ -66,5 +66,5 @@ fn main() {
     }
 
     println!("{}", game.board);
-    utils::print_lookup(&ai);
+    // utils::print_lookup(&ai);
 }

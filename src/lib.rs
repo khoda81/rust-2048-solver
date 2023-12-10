@@ -1,4 +1,5 @@
-// #![feature(slice_flatten)]
+#![feature(slice_flatten)]
+#![feature(iterator_try_reduce)]
 
 pub mod board;
 pub mod shift_row;

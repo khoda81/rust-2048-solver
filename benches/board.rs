@@ -1,7 +1,7 @@
 #![feature(test)]
 
 #[cfg(test)]
-mod benches {
+mod board {
     extern crate test;
 
     use std::collections::HashSet;

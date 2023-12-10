@@ -63,8 +63,7 @@ pub struct Board<const COLS: usize, const ROWS: usize> {
 
 impl<const COLS: usize, const ROWS: usize> std::hash::Hash for Board<COLS, ROWS> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // TODO use <[T]>::flatten when stable
-        let cells = unsafe { std::slice::from_raw_parts(self.as_ptr().cast(), COLS * ROWS) };
+        let cells = self.cells.flatten();
         let chunks = cells.chunks_exact(8);
 
         let remainder = chunks.remainder();

@@ -1,12 +1,12 @@
 #![feature(test)]
 
 #[cfg(test)]
-mod benches {
+mod mean_max {
     extern crate test;
 
     use rust_2048_solver::{
         board::Board,
-        bots::mean_max::{MeanMax, SearchConstraint},
+        bots::mean_max::{Bound, MeanMax, SearchConstraint},
     };
 
     use test::{black_box, Bencher};
@@ -30,7 +30,7 @@ mod benches {
             ai.evaluation_cache.clear();
 
             let search_constrain = SearchConstraint {
-                max_depth: 4,
+                max_depth: Bound::new(3),
                 ..Default::default()
             };
 
@@ -58,7 +58,7 @@ mod benches {
             ai.evaluation_cache.clear();
 
             let search_constrain = SearchConstraint {
-                max_depth: 6,
+                max_depth: Bound::new(4),
                 ..Default::default()
             };
 
