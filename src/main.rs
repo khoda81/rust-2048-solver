@@ -25,7 +25,9 @@ fn main() {
     let mut ai = bots::mean_max::MeanMax::new();
 
     ai.logger.log_search_results = true;
-    ai.logger.log_hit_info = false;
+    // ai.logger.log_cache_info = true;
+    ai.logger.clear_screen = true;
+
     let mut search_duration = Duration::from_secs_f64(0.1);
 
     loop {
@@ -41,7 +43,9 @@ fn main() {
             ..Default::default()
         };
 
-        let EvaluatedAction { eval, action } = ai.search_until(&game.board, search_constraint);
+        let EvaluatedAction { eval, action } = ai
+            .search_until(&game.board, search_constraint)
+            .expect("the game is not over, the ai returned None");
 
         search_duration = match eval.value as u32 {
             0..=20 => Duration::from_secs_f64(20.0),
@@ -59,12 +63,14 @@ fn main() {
         // utils::print_model(&ai.model);
         utils::show_fill_percent(&ai);
 
-        println!("{action}");
+        println!("Action: {action}");
         if !game.step(action) {
             break;
         }
     }
 
-    println!("{}", game.board);
+    println!("{}\n", game.board);
+    println!("Game Over!");
+
     // utils::print_lookup(&ai);
 }

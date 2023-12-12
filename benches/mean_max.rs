@@ -11,59 +11,57 @@ mod mean_max {
 
     use test::{black_box, Bencher};
 
-    #[bench]
-    fn bench_search(b: &mut Bencher) {
+    fn bench_board<const COLS: usize, const ROWS: usize>(
+        b: &mut Bencher,
+        board: Board<COLS, ROWS>,
+        search_constrain: SearchConstraint,
+    ) {
         let mut ai = MeanMax::new();
-
-        let board: Board<4, 4> = [
-            // BOARD
-            [3, 3, 1, 1],
-            [1, 0, 5, 0],
-            [0, 2, 7, 4],
-            [6, 1, 6, 8],
-        ]
-        .into();
-
-        println!("{board}");
 
         b.iter(|| {
             ai.evaluation_cache.clear();
 
-            let search_constrain = SearchConstraint {
-                max_depth: Bound::new(3),
-                ..Default::default()
-            };
-
             let result = ai.search_until(&board, search_constrain);
             let _ = black_box(result);
-        });
+        })
     }
 
     #[bench]
-    fn bench_search_2(b: &mut Bencher) {
-        let mut ai = MeanMax::new();
+    fn bench_search_depth_3(b: &mut Bencher) {
+        bench_board(
+            b,
+            [[3, 3, 1, 1], [1, 0, 5, 0], [0, 2, 7, 4], [6, 1, 6, 8]].into(),
+            SearchConstraint {
+                max_depth: Bound::new(3),
+                ..Default::default()
+            },
+        )
+    }
 
-        let board: Board<4, 4> = [
-            // BOARD
-            [3, 4, 6, 10],
-            [2, 10, 3, 1],
-            [0, 1, 7, 3],
-            [0, 0, 2, 8],
-        ]
-        .into();
-
-        println!("{board}");
-
-        b.iter(|| {
-            ai.evaluation_cache.clear();
-
-            let search_constrain = SearchConstraint {
+    #[bench]
+    fn bench_search_depth_4(b: &mut Bencher) {
+        bench_board(
+            b,
+            [[3, 4, 6, 10], [2, 10, 3, 1], [0, 1, 7, 3], [0, 0, 2, 8]].into(),
+            SearchConstraint {
                 max_depth: Bound::new(4),
                 ..Default::default()
-            };
+            },
+        )
+    }
 
-            let result = ai.search_until(&board, search_constrain);
-            let _ = black_box(result);
-        });
+    #[bench]
+    fn bench_search_terminal(b: &mut Bencher) {
+        bench_board(
+            b,
+            [
+                [0, 0, 0, 0],
+                [11, 12, 13, 14],
+                [15, 16, 17, 18],
+                [19, 20, 21, 22],
+            ]
+            .into(),
+            SearchConstraint::default(),
+        )
     }
 }

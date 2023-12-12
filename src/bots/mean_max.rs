@@ -45,7 +45,7 @@ impl Bound {
         }
     }
 
-    pub fn bound_u8(self) -> u8 {
+    pub fn max_u8(self) -> u8 {
         self.bound().map(|bound| bound.get() - 1).unwrap_or(u8::MAX)
     }
 }
@@ -90,8 +90,16 @@ impl ops::Sub<u8> for Bound {
 #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
 pub struct Evaluation {
     pub value: heuristic::Eval,
-    pub is_terminal: bool,
     pub depth: u8,
+    pub is_complete: bool,
+}
+
+impl Evaluation {
+    const TERMINAL: Self = Evaluation {
+        value: 0.0,
+        depth: 0,
+        is_complete: true,
+    };
 }
 
 impl Display for Evaluation {
@@ -105,7 +113,7 @@ impl Display for Evaluation {
             depth = self.depth
         )?;
 
-        if self.is_terminal {
+        if self.is_complete {
             write!(f, " terminal")?;
         }
 
@@ -131,12 +139,6 @@ impl<A: Display> Display for EvaluatedAction<A> {
 pub enum SearchError {
     #[error("search time exceeded the deadline")]
     TimeOut,
-
-    #[error("reached the maximum search depth")]
-    AtMaximumDepth,
-
-    #[error("attempting to search a lost position")]
-    SearchingOnLostState,
 }
 
 struct SearchID(usize);
@@ -154,7 +156,7 @@ pub struct Logger {
 
     // Config
     pub log_search_results: bool,
-    pub log_hit_info: bool,
+    pub log_cache_info: bool,
     pub clear_screen: bool,
 }
 
@@ -167,13 +169,13 @@ impl Logger {
             search_log: Vec::new(),
 
             log_search_results: false,
-            log_hit_info: false,
+            log_cache_info: false,
             clear_screen: false,
         }
     }
 
     fn register_cache_hit(&mut self, depth: Bound, eval: &Evaluation) {
-        if !self.log_hit_info {
+        if !self.log_cache_info {
             return;
         }
 
@@ -185,7 +187,7 @@ impl Logger {
     }
 
     fn register_cache_miss(&mut self, depth: Bound) {
-        if !self.log_hit_info {
+        if !self.log_cache_info {
             return;
         }
 
@@ -200,7 +202,7 @@ impl Logger {
         }
     }
 
-    fn register_search_start<T>(&mut self, _board: &T, constraint: SearchConstraint) -> SearchID {
+    fn register_search_start<T>(&mut self, _state: &T, constraint: SearchConstraint) -> SearchID {
         let start_time = Instant::now();
         let search_info = SearchInfo {
             constraint,
@@ -218,7 +220,7 @@ impl Logger {
             }
 
             if let Some(max_depth) = constraint.max_depth.bound() {
-                println!("Until depth {}", max_depth);
+                println!("Until depth {max_depth}");
             }
         }
 
@@ -228,10 +230,14 @@ impl Logger {
     fn register_search_result(
         &mut self,
         &SearchID(search_id): &SearchID,
-        result: &EvaluatedAction<Action>,
+        result: &Option<EvaluatedAction<Action>>,
     ) {
         if self.log_search_results {
-            print!("{result:.2}");
+            if let Some(result) = result {
+                print!("{result:.2}");
+            } else {
+                print!("TERMINAL");
+            }
 
             if let Some(search_info) = self.search_log.get_mut(search_id) {
                 print!(" in {:?}", search_info.start_time.elapsed());
@@ -259,7 +265,7 @@ impl Logger {
 
         search_info.end_time = Some(end_time);
 
-        if self.log_hit_info {
+        if self.log_cache_info {
             println!("Hit chance per depth:");
             println!("{:.3}", self.cache_hit_chance_model);
 
@@ -343,8 +349,8 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         }
     }
 
-    pub fn train_model(&mut self, board: &Board<ROWS, COLS>, eval: Evaluation) {
-        let preprocessed_board = heuristic::preprocess_board(board);
+    pub fn train_model(&mut self, state: &Board<ROWS, COLS>, eval: Evaluation) {
+        let preprocessed_board = heuristic::preprocess_board(state);
         let prev_eval = self.model.entry(preprocessed_board).or_default();
 
         let decay = 0.995;
@@ -355,9 +361,9 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         *prev_eval += Weighted::new_weighted(eval.value, weight);
     }
 
-    pub fn heuristic(&self, board: &Board<ROWS, COLS>) -> heuristic::Eval {
+    pub fn heuristic(&self, state: &Board<ROWS, COLS>) -> heuristic::Eval {
         // Preprocess the board for the model
-        let preprocessed = heuristic::preprocess_board(board);
+        let preprocessed = heuristic::preprocess_board(state);
 
         self.model
             .get(&preprocessed)
@@ -367,54 +373,37 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
 
     fn evaluate_state(
         &mut self,
-        board: &Board<ROWS, COLS>,
+        state: &Board<ROWS, COLS>,
         depth_limit: Bound,
     ) -> Result<Evaluation, SearchError> {
-        let Some(lower_depth) = depth_limit - 1 else {
-            return Ok(Evaluation {
-                is_terminal: false,
-                depth: 0,
-                value: self.heuristic(board),
-            });
-        };
-
-        // println!("Searching at Bound: {depth_limit}");
-
-        if let Some(eval) = self.lookup_in_cache(board, depth_limit) {
-            return Ok(eval);
-        }
-
         if let Some(deadline) = self.deadline {
             if Instant::now() >= deadline {
                 return Err(SearchError::TimeOut);
             }
         }
 
-        let mut eval = self.best_action(board, lower_depth)?.eval;
-
-        self.evaluation_cache.put(*board, eval);
-        eval.depth = eval.depth.saturating_add(1);
-        if eval.depth > 2 {
-            self.train_model(board, eval);
-        }
+        let eval = match self.best_action(state, depth_limit)? {
+            Some(eval_action) => eval_action.eval,
+            None => Evaluation::TERMINAL,
+        };
 
         Ok(eval)
     }
 
     fn best_action(
         &mut self,
-        board: &Board<ROWS, COLS>,
+        state: &Board<ROWS, COLS>,
         depth_limit: Bound,
-    ) -> Result<EvaluatedAction<Action>, SearchError> {
-        let mut best_action: Result<EvaluatedAction<_>, _> = Err(SearchError::SearchingOnLostState);
+    ) -> Result<Option<EvaluatedAction<Action>>, SearchError> {
+        let mut best_action: Option<EvaluatedAction<_>> = None;
 
-        for transition in board.iter_transitions() {
+        for transition in state.iter_transitions() {
             let eval = self.evaluate_transition(transition, depth_limit)?;
 
             match best_action {
-                Ok(prev_action) if prev_action.eval > eval => {}
+                Some(prev_action) if prev_action.eval > eval => {}
                 _ => {
-                    best_action = Ok(EvaluatedAction {
+                    best_action = Some(EvaluatedAction {
                         eval,
                         action: transition.action,
                     });
@@ -422,7 +411,7 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
             }
         }
 
-        best_action
+        Ok(best_action)
     }
 
     fn evaluate_transition(
@@ -430,46 +419,57 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         transition: Transition<Board<ROWS, COLS>, Direction>,
         depth_limit: Bound,
     ) -> Result<Evaluation, SearchError> {
-        let mut new_state_value = Weighted::<heuristic::Eval>::default();
-        let mut eval = Evaluation {
-            is_terminal: true,
-            depth: u8::MAX,
-            value: 0.0,
+        let Some(depth_limit) = depth_limit - 1 else {
+            let value = self.heuristic(&transition.new_state) + transition.reward;
+
+            return Ok(Evaluation {
+                value,
+                depth: 0,
+                is_complete: false,
+            });
         };
 
-        let next_states = transition.new_state.spawns();
-        for (next_state, weight) in next_states {
-            if next_state.is_lost() {
-                new_state_value += Weighted::new_weighted(0.0, weight.into());
-                continue;
-            }
-
-            let Evaluation {
-                value,
-                depth,
-                is_terminal,
-            } = self.evaluate_state(&next_state, depth_limit)?;
-
-            eval.is_terminal &= is_terminal;
-            eval.depth = eval.depth.min(depth);
-            new_state_value += Weighted::new_weighted(value, weight.into());
+        if let Some(eval) = self.cached_evaluation(&transition.new_state, depth_limit) {
+            return Ok(eval);
         }
 
-        eval.value = new_state_value.average_value() + transition.reward;
+        let mut transition_value = Weighted::<heuristic::Eval>::default();
+        let mut eval = Evaluation::TERMINAL;
+
+        for (next_state, weight) in transition.new_state.spawns() {
+            let next_eval = if next_state.is_lost() {
+                Evaluation::TERMINAL
+            } else {
+                self.evaluate_state(&next_state, depth_limit)?
+            };
+
+            (eval.is_complete, eval.depth) =
+                (next_eval.is_complete, next_eval.depth).min((eval.is_complete, eval.depth));
+
+            transition_value += Weighted::new_weighted(next_eval.value, weight.into());
+        }
+
+        eval.value = transition_value.average_value() + transition.reward;
+        eval.depth = eval.depth.saturating_add(1);
+
+        self.evaluation_cache.put(transition.new_state, eval);
+        if eval.depth > 2 {
+            self.train_model(&transition.new_state, eval);
+        }
 
         Ok(eval)
     }
 
-    fn lookup_in_cache(
+    fn cached_evaluation(
         &mut self,
-        board: &Board<ROWS, COLS>,
+        state: &Board<ROWS, COLS>,
         depth_limit: Bound,
     ) -> Option<Evaluation> {
-        let mut cache_result = self.evaluation_cache.get(board);
+        let mut cache_result = self.evaluation_cache.get(state);
 
         match cache_result {
-            Some(result) if result.is_terminal => {}
-            Some(result) if result.depth < depth_limit.bound_u8() => cache_result = None,
+            Some(result) if result.is_complete => {}
+            Some(result) if result.depth < depth_limit.max_u8() => cache_result = None,
 
             _ => {}
         };
@@ -482,10 +482,10 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
 
     pub fn search_until(
         &mut self,
-        board: &Board<ROWS, COLS>,
+        state: &Board<ROWS, COLS>,
         constraint: SearchConstraint,
-    ) -> EvaluatedAction<Action> {
-        let search_id = self.logger.register_search_start(board, constraint);
+    ) -> Option<EvaluatedAction<Action>> {
+        let search_id = self.logger.register_search_start(state, constraint);
 
         // Initial search depth
         let initial_depth_limit = match constraint.deadline {
@@ -498,8 +498,8 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         // Remove the previous deadline for the initial search
         self.deadline = None;
 
-        let mut result = self
-            .best_action(board, initial_depth_limit)
+        let mut result: Option<EvaluatedAction<Action>> = self
+            .best_action(state, initial_depth_limit)
             .expect("searching with no constraint");
 
         self.deadline = constraint
@@ -511,10 +511,12 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
         loop {
             self.logger.register_search_result(&search_id, &result);
 
-            let current_depth = if result.eval.is_terminal {
+            let Some(last_result) = result else { break };
+
+            let current_depth = if last_result.eval.is_complete {
                 Bound::Unlimited
             } else {
-                Bound::new(result.eval.depth)
+                Bound::new(last_result.eval.depth)
             };
 
             // Reached the max_depth, quit
@@ -527,7 +529,7 @@ impl<const ROWS: usize, const COLS: usize> MeanMax<ROWS, COLS> {
                 // Limit the depth by depth limit
                 .min(constraint.max_depth);
 
-            result = match self.best_action(board, depth_limit) {
+            result = match self.best_action(state, depth_limit) {
                 Ok(result) => result,
                 Err(_) => break,
             };
