@@ -184,16 +184,19 @@ impl Display for HumanDuration {
             format!("{}ms", nanos / 1_000_000)
         } else if seconds < 10 {
             // 0.1s-9.9s
-            format!("{:.1}s ", nanos as f32 / 1_000_000_000_f32)
+            format!("{:.1}s ", nanos as f32 / 1_000_000_000.0)
         } else if seconds < 60 {
             // 10s-59s
             format!("{}s ", seconds)
         } else if seconds < 597 {
             // 1.0m-9.9m
-            format!("{}m ", seconds as f32 / 60.0)
+            format!("{:.1}m ", seconds as f32 / 60.0)
         } else if seconds < 3_600 {
             // 10m-59m
             format!("{}m ", seconds / 60)
+        } else if seconds < 35820 {
+            // 1.0h-9.9h
+            format!("{:.1}h ", seconds as f32 / 3_600.0)
         } else {
             // 1h-...
             format!("{}h ", seconds / 3_600)

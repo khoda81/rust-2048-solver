@@ -150,7 +150,11 @@ impl<const ROWS: usize, const COLS: usize>
         self.depth_limit = eval_depth_limit;
 
         let mut transition_value = Weighted::<_, super::Value>::default();
-        let mut best = Evaluation::TERMINAL;
+        let mut best = Evaluation {
+            value: 0.0,
+            depth: u8::MAX,
+            is_complete: true,
+        };
 
         for (next_state, weight) in next_state.spawns() {
             let eval = self.evaluate_state(&next_state)?;

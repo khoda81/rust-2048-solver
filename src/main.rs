@@ -24,14 +24,22 @@ fn main() {
     let mut game = game::GameOf2048::<4, 4>::create();
     let mut ai = bots::mean_max::MeanMax::new();
 
+    game.state = [
+        [0, 0, 0, 0],
+        [0, 1, 13, 14],
+        [15, 16, 17, 18],
+        [19, 20, 21, 22],
+    ]
+    .into();
+
     ai.logger.log_search_results = true;
     // ai.logger.log_cache_info = true;
     // ai.logger.clear_screen = true;
 
-    let mut search_duration = Duration::from_secs_f64(0.1);
+    let mut search_duration = Duration::from_secs_f64(200.1);
 
     loop {
-        println!("{}", game.board);
+        println!("{}", game.state);
 
         let deadline = Instant::now() + search_duration;
 
@@ -45,7 +53,7 @@ fn main() {
         };
 
         let EvaluatedAction { eval, action } = ai
-            .decide_until(&game.board, search_constraint)
+            .decide_until(&game.state, search_constraint)
             .expect("the game is not over, the ai returned None");
 
         search_duration = match eval.value as u32 {
@@ -70,7 +78,7 @@ fn main() {
         }
     }
 
-    println!("{}\n", game.board);
+    println!("{}\n", game.state);
     println!("Game Over!");
 
     // utils::print_lookup(&ai);
