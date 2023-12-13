@@ -1,7 +1,7 @@
 use std::{
-    self, cmp,
+    cmp,
     collections::HashMap,
-    fmt::{Debug, Display, Write},
+    fmt::{self, Debug, Display, Write},
     time::Duration,
 };
 
@@ -102,7 +102,7 @@ pub fn print_lookup<const ROWS: usize, const COLS: usize>(
     show_map(&new_lookup);
 }
 
-pub fn show_map<V: std::fmt::Debug>(map: &HashMap<heuristic::PreprocessedBoard, V>) {
+pub fn show_map<V: Debug>(map: &HashMap<heuristic::PreprocessedBoard, V>) {
     for (key, value) in map
         .iter()
         .sorted_by_key(|(&(empty, max), _eval)| (max, empty))
@@ -119,7 +119,7 @@ pub enum Signed<T> {
 }
 
 impl<T: Display> Display for Signed<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let inner = match self {
             Signed::Positive(inner) => inner,
             Signed::Negative(inner) => {
@@ -133,7 +133,7 @@ impl<T: Display> Display for Signed<T> {
 }
 
 impl<T: Debug> Debug for Signed<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let inner = match self {
             Signed::Positive(inner) => inner,
             Signed::Negative(inner) => {
@@ -152,5 +152,51 @@ pub fn get_signed_duration(seconds: f64) -> Signed<Duration> {
         Signed::Positive(abs_duration)
     } else {
         Signed::Negative(abs_duration)
+    }
+}
+
+/// Format the duration as human readable
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct HumanDuration(pub Duration);
+
+impl Display for HumanDuration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let duration = self.0;
+        let seconds = duration.as_secs();
+        let nanos = duration.as_nanos();
+
+        let buf = if nanos < 1_00 {
+            // 1ns-99ns
+            format!("{}ns", nanos)
+        } else if nanos < 9_950 {
+            // 1.0µs-9.9µs
+            format!("{:.1}µs", nanos as f32 / 1_000.0)
+        } else if nanos < 99_500 {
+            // 10µs-99µs
+            format!("{}µs", nanos / 1_000)
+        } else if nanos < 9_500_000 {
+            // 0.1ms-9.9ms
+            format!("{:.1}ms", nanos as f32 / 1_000_000.0)
+        } else if nanos < 99_500_000 {
+            // 10ms-99ms
+            format!("{}ms", nanos / 1_000_000)
+        } else if seconds < 10 {
+            // 0.1s-9.9s
+            format!("{:.1}s", nanos as f32 / 1_000_000_000_f32)
+        } else if seconds < 60 {
+            // 10s-59s
+            format!("{}s", seconds)
+        } else if seconds < 597 {
+            // 1.0m-9.9m
+            format!("{}m", seconds as f32 / 60.0)
+        } else if seconds < 3_600 {
+            // 10m-59m
+            format!("{}m", seconds / 60)
+        } else {
+            // 1h-...
+            format!("{}h", seconds / 3_600)
+        };
+
+        f.pad(&buf)
     }
 }

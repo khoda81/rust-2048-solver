@@ -26,7 +26,7 @@ fn main() {
 
     ai.logger.log_search_results = true;
     // ai.logger.log_cache_info = true;
-    ai.logger.clear_screen = true;
+    // ai.logger.clear_screen = true;
 
     let mut search_duration = Duration::from_secs_f64(0.1);
 
