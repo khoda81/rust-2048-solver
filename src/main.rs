@@ -39,12 +39,13 @@ fn main() {
         let search_constraint = SearchConstraint {
             deadline: Some(deadline),
             // max_depth: Bound::new(3),
+
             // Set the remaining values to defaults
             ..Default::default()
         };
 
         let EvaluatedAction { eval, action } = ai
-            .search_until(&game.board, search_constraint)
+            .decide_until(&game.board, search_constraint)
             .expect("the game is not over, the ai returned None");
 
         search_duration = match eval.value as u32 {

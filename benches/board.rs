@@ -1,60 +1,52 @@
 #![feature(test)]
 
 #[cfg(test)]
-mod board {
+mod bench_game_of_2048 {
     extern crate test;
 
     use std::collections::HashSet;
 
     use rand::seq::SliceRandom;
-    use rust_2048_solver::board::{Board, Direction};
+    use rust_2048_solver::board::{Direction, StateOf2048};
 
     use test::{black_box, Bencher};
 
-    type State = Board<4, 4>;
+    type State = StateOf2048<4, 4>;
+
+    fn generate_states(count: usize) -> Vec<State> {
+        let starting_state = State::from([[3, 3, 1, 1], [1, 0, 5, 0], [0, 2, 7, 4], [6, 1, 6, 8]]);
+
+        let mut states = vec![starting_state];
+        let mut rng = rand::thread_rng();
+        while states.len() < count {
+            let state = *states.choose(&mut rng).unwrap();
+            let iter = state
+                .iter_transitions()
+                .flat_map(|transition| transition.next_state.spawns())
+                .map(|(new_state, _)| new_state);
+
+            states.extend(iter);
+        }
+
+        states.truncate(count);
+
+        states
+    }
 
     #[bench]
     fn bench_hash(b: &mut Bencher) {
-        let boards = generate_boards(1000);
+        let states = generate_states(1000);
 
-        println!("Hashing {} states", boards.len());
+        println!("Hashing {} states", states.len());
         b.iter(|| {
-            let set = HashSet::<State>::from_iter(boards.clone());
+            let set = HashSet::<State>::from_iter(states.clone());
             black_box(set);
         });
     }
 
-    fn generate_boards(count: usize) -> Vec<Board<4, 4>> {
-        let starting_board: State = [
-            // BOARD
-            [3, 3, 1, 1],
-            [1, 0, 5, 0],
-            [0, 2, 7, 4],
-            [6, 1, 6, 8],
-        ]
-        .into();
-
-        let mut boards = Vec::from([starting_board]);
-        let mut rng = rand::thread_rng();
-        while boards.len() < count {
-            let board = *boards.choose(&mut rng).unwrap();
-            let iter = board
-                .iter_transitions()
-                .map(|transition| transition.new_state)
-                .flat_map(|new_board| new_board.spawns())
-                .map(|(new_board, _)| new_board);
-
-            boards.extend(iter);
-        }
-
-        boards.truncate(count);
-
-        boards
-    }
-
     #[bench]
     fn bench_board_swipe(b: &mut Bencher) {
-        let mut board = Board::<4, 4>::new();
+        let mut board = State::new();
 
         b.iter(|| {
             (0..10_000).for_each(|_| {
@@ -64,7 +56,7 @@ mod board {
                 board.swipe(Direction::Left);
 
                 if board.is_lost() {
-                    board = Board::new();
+                    board = StateOf2048::new();
                 }
             })
         });

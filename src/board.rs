@@ -45,7 +45,6 @@ impl fmt::Display for Direction {
     }
 }
 
-// TODO: use strum instead
 const ALL_ACTIONS: [Direction; 4] = [
     Direction::Up,
     Direction::Down,
@@ -57,11 +56,11 @@ pub type Weight = u8;
 pub type Cell = u8;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct Board<const COLS: usize, const ROWS: usize> {
+pub struct StateOf2048<const COLS: usize, const ROWS: usize> {
     pub cells: [[Cell; COLS]; ROWS],
 }
 
-impl<const COLS: usize, const ROWS: usize> std::hash::Hash for Board<COLS, ROWS> {
+impl<const COLS: usize, const ROWS: usize> std::hash::Hash for StateOf2048<COLS, ROWS> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         let cells = self.cells.flatten();
         let chunks = cells.chunks_exact(8);
@@ -83,14 +82,14 @@ impl<const COLS: usize, const ROWS: usize> std::hash::Hash for Board<COLS, ROWS>
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> Default for Board<COLS, ROWS> {
+impl<const COLS: usize, const ROWS: usize> Default for StateOf2048<COLS, ROWS> {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[allow(clippy::unnecessary_fold)]
-impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
+impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
     pub fn new() -> Self {
         [[0; COLS]; ROWS].into()
     }
@@ -102,15 +101,18 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
 
     // TODO: move this to game
     pub fn iter_transitions(&self) -> impl Iterator<Item = Transition<Self, Direction>> + '_ {
-        ALL_ACTIONS.into_iter().filter_map(|action| {
-            self.swiped(action).map(|new_state| {
-                // TODO replace with the actual reward
-                let reward = 1.0;
+        let possible_actions = (!self.is_lost())
+            .then_some(ALL_ACTIONS)
+            .into_iter()
+            .flatten();
 
+        possible_actions.filter_map(|action| {
+            self.swiped(action).map(|next_state| {
                 Transition {
                     action,
-                    reward,
-                    new_state,
+                    // TODO replace with the actual reward
+                    reward: 1.0,
+                    next_state,
                 }
             })
         })
@@ -257,7 +259,7 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> fmt::Display for Board<COLS, ROWS> {
+impl<const COLS: usize, const ROWS: usize> fmt::Display for StateOf2048<COLS, ROWS> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // Print the first row without nextline
         if let Some(row) = self.first() {
@@ -288,19 +290,19 @@ fn format_row(last_row: &[Cell], f: &mut fmt::Formatter<'_>) -> Result<(), fmt::
     Ok(())
 }
 
-impl<const COLS: usize, const ROWS: usize> From<[[Cell; COLS]; ROWS]> for Board<COLS, ROWS> {
+impl<const COLS: usize, const ROWS: usize> From<[[Cell; COLS]; ROWS]> for StateOf2048<COLS, ROWS> {
     fn from(cells: [[Cell; COLS]; ROWS]) -> Self {
         Self { cells }
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> From<Board<COLS, ROWS>> for [[Cell; COLS]; ROWS] {
-    fn from(board: Board<COLS, ROWS>) -> Self {
+impl<const COLS: usize, const ROWS: usize> From<StateOf2048<COLS, ROWS>> for [[Cell; COLS]; ROWS] {
+    fn from(board: StateOf2048<COLS, ROWS>) -> Self {
         *board
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> Deref for Board<COLS, ROWS> {
+impl<const COLS: usize, const ROWS: usize> Deref for StateOf2048<COLS, ROWS> {
     type Target = [[Cell; COLS]; ROWS];
 
     fn deref(&self) -> &Self::Target {
@@ -308,7 +310,7 @@ impl<const COLS: usize, const ROWS: usize> Deref for Board<COLS, ROWS> {
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> DerefMut for Board<COLS, ROWS> {
+impl<const COLS: usize, const ROWS: usize> DerefMut for StateOf2048<COLS, ROWS> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.cells
     }

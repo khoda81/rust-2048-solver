@@ -2,12 +2,13 @@ use std::{
     cmp,
     collections::HashMap,
     fmt::{self, Debug, Display, Write},
+    hash::Hash,
     time::Duration,
 };
 
 use itertools::Itertools;
 
-use crate::bots::{self, heuristic, mean_max::MeanMax, model::AccumulationModel};
+use crate::bots::{heuristic, mean_max::MeanMax, model::AccumulationModel};
 
 /// Iterator is the lexicographic maximum of all the iterators added to it.
 ///
@@ -75,7 +76,10 @@ impl<T: Ord> Iterator for MaxIter<'_, T> {
     }
 }
 
-pub fn show_fill_percent(ai: &MeanMax<4, 4>) {
+pub fn show_fill_percent<S, P>(ai: &MeanMax<S, P>)
+where
+    S: Eq + Hash,
+{
     let capacity = ai.evaluation_cache.cap().get();
     let filled = ai.evaluation_cache.len();
     let fill_percent = (filled * 100) as f64 / capacity as f64;
@@ -90,9 +94,7 @@ pub fn print_model<K: Debug + Ord, V: Display>(model: &AccumulationModel<K, V>) 
         .for_each(|(key, value)| println!("{key:2?}: {value}"));
 }
 
-pub fn print_lookup<const ROWS: usize, const COLS: usize>(
-    ai: &bots::mean_max::MeanMax<ROWS, COLS>,
-) {
+pub fn print_lookup<S>(ai: &MeanMax<S, heuristic::PreprocessedBoard>) {
     let mut new_lookup = heuristic::get_lookup().clone();
 
     for (key, eval) in ai.model.memory.iter() {
@@ -182,19 +184,19 @@ impl Display for HumanDuration {
             format!("{}ms", nanos / 1_000_000)
         } else if seconds < 10 {
             // 0.1s-9.9s
-            format!("{:.1}s", nanos as f32 / 1_000_000_000_f32)
+            format!("{:.1}s ", nanos as f32 / 1_000_000_000_f32)
         } else if seconds < 60 {
             // 10s-59s
-            format!("{}s", seconds)
+            format!("{}s ", seconds)
         } else if seconds < 597 {
             // 1.0m-9.9m
-            format!("{}m", seconds as f32 / 60.0)
+            format!("{}m ", seconds as f32 / 60.0)
         } else if seconds < 3_600 {
             // 10m-59m
-            format!("{}m", seconds / 60)
+            format!("{}m ", seconds / 60)
         } else {
             // 1h-...
-            format!("{}h", seconds / 3_600)
+            format!("{}h ", seconds / 3_600)
         };
 
         f.pad(&buf)

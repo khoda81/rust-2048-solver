@@ -1,22 +1,22 @@
 use std::fmt;
 
-use crate::board::{Board, Direction};
+use crate::board::{Direction, StateOf2048};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Transition<State, Action> {
     pub action: Action,
     pub reward: f64,
-    pub new_state: State,
+    pub next_state: State,
 }
 
 pub struct GameOf2048<const ROWS: usize, const COLS: usize> {
-    pub board: Board<ROWS, COLS>,
+    pub board: StateOf2048<ROWS, COLS>,
 }
 
 impl<const ROWS: usize, const COLS: usize> GameOf2048<ROWS, COLS> {
     pub fn create() -> Self {
         GameOf2048 {
-            board: Board::new().random_spawn(),
+            board: StateOf2048::new().random_spawn(),
         }
     }
 

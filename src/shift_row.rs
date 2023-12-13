@@ -83,9 +83,7 @@ impl<const SIZE: usize> From<[u8; SIZE]> for Row<SIZE> {
 }
 impl<const SIZE: usize> From<Row<SIZE>> for [u8; SIZE] {
     fn from(value: Row<SIZE>) -> Self {
-        value
-            .0
-            .map(|cell| cell.map(|block| block.get()).unwrap_or(0))
+        value.0.map(|cell| cell.map_or(0, |block| block.get()))
     }
 }
 

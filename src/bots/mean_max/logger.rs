@@ -1,6 +1,6 @@
 use crate::utils;
 
-use super::{Action, Bound, EvaluatedAction, Evaluation, SearchConstraint};
+use super::{mean_max_2048, Bound, Evaluation, SearchConstraint};
 use crate::bots::model::{weighted::Weighted, AccumulationModel};
 use std::time::{Duration, Instant};
 
@@ -103,13 +103,13 @@ impl Logger {
     pub(super) fn register_search_result(
         &mut self,
         &SearchID(search_index): &SearchID,
-        result: &Option<EvaluatedAction<Action>>,
+        decision: &mean_max_2048::Decision,
     ) {
         if self.log_search_results {
-            if let Some(result) = result {
+            if let Some(result) = decision {
                 print!("{result:.2}");
             } else {
-                print!("TERMINAL");
+                print!("terminate");
             }
 
             if let Some(search_info) = self.search_log.get(search_index) {
@@ -129,7 +129,7 @@ impl Logger {
         }
 
         if self.clear_screen {
-            println!("\x1b[2J\x1b[H");
+            print!("\x1b[2J\x1b[H");
         }
 
         let search_info = match self.search_log.get_mut(search_index) {
@@ -160,7 +160,7 @@ impl Logger {
 
         let avg_miss_seconds = self.deadline_miss_model.average_value();
         let miss_err = (avg_miss_seconds - miss_seconds).abs();
-        let outlier_threshold = Duration::from_millis(5);
+        let outlier_threshold = Duration::from_micros(5);
         if miss_err.is_nan() || Duration::from_secs_f64(miss_err) <= outlier_threshold {
             self.deadline_miss_model += Weighted::new(miss_seconds);
         } else {
