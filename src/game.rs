@@ -3,10 +3,10 @@ use std::fmt;
 use crate::board::{Direction, StateOf2048};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Transition<State, Action> {
+pub struct Transition<State, Action, Reward> {
     pub action: Action,
-    pub reward: f64,
     pub next_state: State,
+    pub reward: Reward,
 }
 
 pub struct GameOf2048<const ROWS: usize, const COLS: usize> {

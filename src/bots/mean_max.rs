@@ -29,7 +29,7 @@ impl Bound {
             .map_or(Self::Unlimited, Self::Bounded)
     }
 
-    fn bound(self) -> Option<NonZeroU8> {
+    const fn bound(self) -> Option<NonZeroU8> {
         match self {
             Self::Bounded(bound) => Some(bound),
             Self::Unlimited => None,
@@ -77,49 +77,35 @@ impl ops::Sub<u8> for Bound {
     }
 }
 
-type Value = f64;
+type Value = f32;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
 pub struct Evaluation {
     pub value: Value,
-    pub depth: u8,
-    pub is_complete: bool,
+    pub depth: Bound,
 }
 
 impl Evaluation {
     const TERMINAL: Self = Evaluation {
         value: 0.0,
-        depth: 0,
-        is_complete: true,
+        depth: Bound::Unlimited,
     };
 
-    pub fn depth_bound(&self) -> Bound {
-        if self.is_complete {
-            Bound::Unlimited
-        } else {
-            Bound::new(self.depth)
-        }
-    }
-
+    #[deprecated = "use `self.depth` instead"]
     pub fn fits_depth_bound(&self, bound: Bound) -> bool {
-        self.is_complete || self.depth >= bound.max_u8()
+        self.depth >= bound
     }
 }
 
 impl Display for Evaluation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let precision = f.precision().unwrap_or(2);
-        write!(
-            f,
-            "{depth:3} -> {value:.*}",
-            precision,
-            value = self.value,
-            depth = self.depth
-        )?;
-
-        if self.is_complete {
-            write!(f, " complete")?;
+        match self.depth {
+            Bound::Bounded(_) => write!(f, "{:2}", self.depth)?,
+            Bound::Unlimited => write!(f, "complete")?,
         }
+
+        let precision = f.precision().unwrap_or(2);
+        write!(f, " -> {value:.*}", precision, value = self.value,)?;
 
         Ok(())
     }
@@ -134,7 +120,7 @@ pub struct EvaluatedAction<A> {
 
 impl<A: Display> Display for EvaluatedAction<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} :", self.action)?;
+        write!(f, "{}: ", self.action)?;
         self.eval.fmt(f)
     }
 }
@@ -177,7 +163,7 @@ pub struct MeanMax<State, P> {
     pub deadline: Option<Instant>,
     pub depth_limit: Bound,
     pub evaluation_cache: lru::LruCache<State, Evaluation>,
-    pub model: AccumulationModel<P, Weighted<Value>>,
+    pub model: AccumulationModel<P, Weighted<f64>>,
     pub logger: logger::Logger,
 }
 

@@ -100,7 +100,7 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
     }
 
     // TODO: move this to game
-    pub fn iter_transitions(&self) -> impl Iterator<Item = Transition<Self, Direction>> + '_ {
+    pub fn iter_transitions(&self) -> impl Iterator<Item = Transition<Self, Direction, f32>> + '_ {
         let possible_actions = (!self.is_lost())
             .then_some(ALL_ACTIONS)
             .into_iter()

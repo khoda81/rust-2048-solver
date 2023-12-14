@@ -48,8 +48,10 @@ impl Logger {
         let hit = Weighted::new(1.0);
         self.cache_hit_chance_model.add_to(depth, hit);
 
-        let hit_depth = Weighted::new(eval.depth.into());
-        self.cache_hit_depth_model.add_to(depth, hit_depth);
+        if let Bound::Bounded(_) = eval.depth {
+            let hit_depth = Weighted::new(eval.depth.max_u8().into());
+            self.cache_hit_depth_model.add_to(depth, hit_depth);
+        }
     }
 
     pub(super) fn register_cache_miss(&mut self, depth: Bound) {
@@ -79,12 +81,30 @@ impl Logger {
     ) -> SearchID {
         let start_time = Instant::now();
 
+        #[allow(non_snake_case)]
         if self.show_size_of_critical_structs {
-            dbg!(std::mem::size_of::<mean_max_2048::Action>());
-            dbg!(std::mem::size_of::<mean_max_2048::OptionEvaluation>());
-            dbg!(std::mem::size_of::<mean_max_2048::EvaluationResult>());
-            dbg!(std::mem::size_of::<mean_max_2048::Decision>());
-            dbg!(std::mem::size_of::<mean_max_2048::DecisionResult>());
+            let State = std::mem::size_of_val(_state);
+            dbg!(State);
+            let Action = std::mem::size_of::<mean_max_2048::Action>();
+            dbg!(Action);
+
+            let Transition = std::mem::size_of::<
+                crate::game::Transition<T, mean_max_2048::Action, super::Value>,
+            >();
+            dbg!(Transition);
+
+            let Eval = std::mem::size_of::<super::Evaluation>();
+            dbg!(Eval);
+            let OptEval = std::mem::size_of::<mean_max_2048::OptionEvaluation>();
+            dbg!(OptEval);
+            let EvalRst = std::mem::size_of::<mean_max_2048::EvaluationResult>();
+            dbg!(EvalRst);
+            let EvalAct = std::mem::size_of::<super::EvaluatedAction<mean_max_2048::Action>>();
+            dbg!(EvalAct);
+            let Decision = std::mem::size_of::<mean_max_2048::Decision>();
+            dbg!(Decision);
+            let DeciRst = std::mem::size_of::<mean_max_2048::DecisionResult>();
+            dbg!(DeciRst);
 
             self.show_size_of_critical_structs = false;
         }
