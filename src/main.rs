@@ -1,44 +1,18 @@
-#![allow(unused_imports)]
-
-use itertools::Itertools;
-
-use std::{
-    collections::hash_map::Entry,
-    fmt::{Debug, Display, Write},
-    mem,
-    sync::{mpsc, Mutex},
-    time::{Duration, Instant},
-};
-
-use rust_2048_solver::{
-    bots::{
-        self,
-        mean_max::{Bound, EvaluatedAction, SearchConstraint},
-        model::weighted::{self, Weighted},
-    },
-    game, utils,
-};
+use rust_2048_solver::{bots::mean_max, game, utils};
+use std::time::{Duration, Instant};
 
 fn main() {
     // show_map(heuristic::get_lookup());
 
     let mut game = game::GameOf2048::<4, 4>::create();
-    let mut ai = bots::mean_max::MeanMax::new();
-
-    game.state = [
-        [0, 0, 0, 0],
-        [0, 1, 13, 14],
-        [15, 16, 17, 18],
-        [19, 20, 21, 22],
-    ]
-    .into();
+    let mut ai = mean_max::MeanMax::new();
 
     ai.logger.log_search_results = true;
     // ai.logger.log_cache_info = true;
     // ai.logger.clear_screen = true;
     ai.logger.show_size_of_critical_structs = true;
 
-    let mut search_duration = Duration::from_secs_f64(200.1);
+    let mut search_duration = Duration::from_secs_f64(0.1);
 
     loop {
         println!("{}", game.state);
@@ -46,7 +20,7 @@ fn main() {
         let deadline = Instant::now() + search_duration;
 
         #[allow(clippy::needless_update)]
-        let search_constraint = SearchConstraint {
+        let search_constraint = mean_max::SearchConstraint {
             deadline: Some(deadline),
             // max_depth: Bound::new(3),
 
@@ -54,11 +28,12 @@ fn main() {
             ..Default::default()
         };
 
-        let EvaluatedAction { eval, action } = ai
-            .decide_until(&game.state, search_constraint)
-            .expect("the game is not over, the ai returned None");
+        let Some(decision) = ai.decide_until(&game.state, search_constraint) else {
+            println!("The agent resigned!");
+            break;
+        };
 
-        search_duration = match eval.value as u32 {
+        search_duration = match decision.eval.value as u32 {
             0..=20 => Duration::from_secs_f64(20.0),
             21..=50 => Duration::from_secs_f64(10.0),
             51..=100 => Duration::from_secs_f64(5.0),
@@ -68,7 +43,7 @@ fn main() {
             _ => Duration::from_secs_f64(0.1),
         };
 
-        // search_duration = Duration::from_secs_f64(60.0);
+        let action = decision.action;
 
         // utils::print_lookup(&ai);
         // utils::print_model(&ai.model);
