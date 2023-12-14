@@ -22,6 +22,7 @@ pub struct Logger {
     pub log_search_results: bool,
     pub log_cache_info: bool,
     pub clear_screen: bool,
+    pub show_size_of_critical_structs: bool,
 }
 
 impl Logger {
@@ -35,6 +36,7 @@ impl Logger {
             log_search_results: false,
             log_cache_info: false,
             clear_screen: false,
+            show_size_of_critical_structs: false,
         }
     }
 
@@ -76,6 +78,17 @@ impl Logger {
         constraint: SearchConstraint,
     ) -> SearchID {
         let start_time = Instant::now();
+
+        if self.show_size_of_critical_structs {
+            dbg!(std::mem::size_of::<mean_max_2048::Action>());
+            dbg!(std::mem::size_of::<mean_max_2048::OptionEvaluation>());
+            dbg!(std::mem::size_of::<mean_max_2048::EvaluationResult>());
+            dbg!(std::mem::size_of::<mean_max_2048::Decision>());
+            dbg!(std::mem::size_of::<mean_max_2048::DecisionResult>());
+
+            self.show_size_of_critical_structs = false;
+        }
+
         let search_info = SearchInfo {
             constraint,
             start_time,

@@ -6,6 +6,7 @@ use std::{
     collections::hash_map::Entry,
     fmt::{Debug, Display, Write},
     mem,
+    sync::{mpsc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -35,6 +36,7 @@ fn main() {
     ai.logger.log_search_results = true;
     // ai.logger.log_cache_info = true;
     // ai.logger.clear_screen = true;
+    ai.logger.show_size_of_critical_structs = true;
 
     let mut search_duration = Duration::from_secs_f64(200.1);
 
