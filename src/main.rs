@@ -1,15 +1,18 @@
 use rust_2048_solver::{bots::mean_max, game, utils};
-use std::time::{Duration, Instant};
+use std::{
+    fmt::Display,
+    time::{Duration, Instant},
+};
 
 fn main() {
     // show_map(heuristic::get_lookup());
 
-    let mut game = game::GameOf2048::<4, 4>::create();
+    let mut game = game::Swipe2048::<4, 4>::create();
     let mut ai = mean_max::MeanMax::new();
 
     ai.logger.log_search_results = true;
     // ai.logger.log_cache_info = true;
-    // ai.logger.clear_screen = true;
+    ai.logger.clear_screen = true;
     // ai.logger.show_size_of_critical_structs = true;
 
     let mut search_duration = Duration::from_secs_f64(0.1);
@@ -28,8 +31,9 @@ fn main() {
             ..Default::default()
         };
 
-        let Some(decision) = ai.decide_until(&game.state, search_constraint) else {
-            break println!("The agent resigned!");
+        let Some(decision) = ai.decide_until(&game, search_constraint) else {
+            println!("The agent resigned!");
+            break;
         };
 
         search_duration = match decision.eval.value as u32 {
@@ -49,7 +53,7 @@ fn main() {
         utils::show_fill_percent(&ai);
 
         println!("Action: {action}");
-        if !game.step(action) {
+        if game.full_step(action).is_none() {
             break;
         }
     }

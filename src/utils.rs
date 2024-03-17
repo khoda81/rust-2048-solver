@@ -98,7 +98,7 @@ pub fn print_lookup<S>(ai: &MeanMax<S, heuristic::PreprocessedBoard>) {
     let mut new_lookup = heuristic::get_lookup().clone();
 
     for (key, eval) in ai.model.memory.iter() {
-        new_lookup.insert(*key, eval.average_value());
+        new_lookup.insert(*key, eval.weighted_average());
     }
 
     show_map(&new_lookup);

@@ -7,7 +7,10 @@ mod bench_game_of_2048 {
     use std::collections::HashSet;
 
     use rand::seq::SliceRandom;
-    use rust_2048_solver::board::{Direction, StateOf2048};
+    use rust_2048_solver::{
+        board::{Direction, StateOf2048},
+        game,
+    };
 
     use test::{black_box, Bencher};
 
@@ -20,9 +23,10 @@ mod bench_game_of_2048 {
         let mut rng = rand::thread_rng();
         while states.len() < count {
             let state = *states.choose(&mut rng).unwrap();
-            let iter = state
-                .iter_transitions()
-                .flat_map(|transition| transition.next_state.spawns())
+            let game = game::Swipe2048::from(state);
+            let iter = game
+                .transitions()
+                .flat_map(|transition| transition.next.spawns())
                 .map(|(new_state, _)| new_state);
 
             states.extend(iter);

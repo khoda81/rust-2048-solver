@@ -1,107 +1,39 @@
 pub mod logger;
+pub mod max_depth;
 pub mod mean_max_2048;
 
 use crate::bots::model::{weighted::Weighted, AccumulationModel};
-use std::{
-    fmt::Display,
-    hash::Hash,
-    num::{NonZeroU8, NonZeroUsize},
-    ops,
-    time::Instant,
-};
+use std::{fmt::Display, hash::Hash, num::NonZeroUsize, time::Instant};
 use thiserror::Error;
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Bound {
-    /// Represents any of {`0`, `1`, `2`, ..., `254`}
-    Bounded(NonZeroU8),
-
-    /// Represents `∞`
-    #[default]
-    Unlimited,
-}
-
-impl Bound {
-    pub fn new(max_value: u8) -> Self {
-        max_value
-            .checked_add(1)
-            .and_then(NonZeroU8::new)
-            .map_or(Self::Unlimited, Self::Bounded)
-    }
-
-    const fn bound(self) -> Option<NonZeroU8> {
-        match self {
-            Self::Bounded(bound) => Some(bound),
-            Self::Unlimited => None,
-        }
-    }
-
-    pub fn max_u8(self) -> u8 {
-        self.bound().map_or(u8::MAX, |bound| bound.get() - 1)
-    }
-}
-
-impl Display for Bound {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Bound::Bounded(_) => self.max_u8().fmt(f),
-            Bound::Unlimited => '∞'.fmt(f),
-        }
-    }
-}
-
-impl ops::Add<u8> for Bound {
-    type Output = Self;
-
-    fn add(self, rhs: u8) -> Self::Output {
-        self.bound()
-            .and_then(|bound| bound.checked_add(rhs))
-            .map_or(Self::Unlimited, Self::Bounded)
-    }
-}
-
-impl ops::AddAssign<u8> for Bound {
-    fn add_assign(&mut self, rhs: u8) {
-        *self = *self + rhs;
-    }
-}
-
-impl ops::Sub<u8> for Bound {
-    type Output = Option<Self>;
-
-    fn sub(self, rhs: u8) -> Self::Output {
-        match self.bound() {
-            Some(bound) => NonZeroU8::new(bound.get().saturating_sub(rhs)).map(Self::Bounded),
-            None => Some(Bound::Unlimited),
-        }
-    }
-}
 
 type Value = f32;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
 pub struct Evaluation {
+    /// Expected value of the given state.
     pub value: Value,
-    pub depth: Bound,
+
+    /// Minimum depth of searched tree ([max_depth::MaxDepth::Unlimited] means this is the eval for a full search tree).
+    pub min_depth: max_depth::MaxDepth,
 }
 
 impl Evaluation {
     const TERMINAL: Self = Evaluation {
         value: 0.0,
-        depth: Bound::Unlimited,
+        min_depth: max_depth::MaxDepth::Unlimited,
     };
 
     #[deprecated = "use `self.depth` instead"]
-    pub fn fits_depth_bound(&self, bound: Bound) -> bool {
-        self.depth >= bound
+    pub fn fits_depth_bound(&self, bound: max_depth::MaxDepth) -> bool {
+        self.min_depth >= bound
     }
 }
 
 impl Display for Evaluation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.depth {
-            Bound::Bounded(_) => write!(f, "{:2}", self.depth)?,
-            Bound::Unlimited => write!(f, "complete")?,
+        match self.min_depth {
+            max_depth::MaxDepth::Bounded(_) => write!(f, "{:2}", self.min_depth)?,
+            max_depth::MaxDepth::Unlimited => write!(f, "complete")?,
         }
 
         let precision = f.precision().unwrap_or(2);
@@ -134,14 +66,14 @@ pub enum SearchError {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct SearchConstraint {
     pub deadline: Option<Instant>,
-    pub max_depth: Bound,
+    pub max_depth: max_depth::MaxDepth,
 }
 
 impl Default for SearchConstraint {
     fn default() -> Self {
         Self {
             deadline: None,
-            max_depth: Bound::Unlimited,
+            max_depth: max_depth::MaxDepth::Unlimited,
         }
     }
 }
@@ -159,9 +91,10 @@ impl SearchConstraint {
     }
 }
 
+// TODO: Add concurrency to cache and search
 pub struct MeanMax<State, P> {
     pub deadline: Option<Instant>,
-    pub depth_limit: Bound,
+    pub depth_limit: max_depth::MaxDepth,
     pub evaluation_cache: lru::LruCache<State, Evaluation>,
     pub model: AccumulationModel<P, Weighted<f64>>,
     pub logger: logger::Logger,
@@ -184,7 +117,7 @@ impl<S: Hash + Eq, P> MeanMax<S, P> {
         Self {
             evaluation_cache: lru::LruCache::new(capacity),
             deadline: None,
-            depth_limit: Bound::Unlimited,
+            depth_limit: max_depth::MaxDepth::Unlimited,
             model: AccumulationModel::new(),
             logger: logger::Logger::new(),
         }

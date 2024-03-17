@@ -1,7 +1,9 @@
-use crate::utils;
-
-use super::{mean_max_2048, Bound, Evaluation, SearchConstraint};
+use super::{
+    max_depth::{self, MaxDepth},
+    mean_max_2048, Evaluation, SearchConstraint,
+};
 use crate::bots::model::{weighted::Weighted, AccumulationModel};
+use crate::utils;
 use std::time::{Duration, Instant};
 
 pub(super) struct SearchID(usize);
@@ -13,8 +15,8 @@ pub struct SearchInfo {
 }
 
 pub struct Logger {
-    pub cache_hit_chance_model: AccumulationModel<Bound, Weighted>,
-    pub cache_hit_depth_model: AccumulationModel<Bound, Weighted>,
+    pub cache_hit_chance_model: AccumulationModel<MaxDepth, Weighted>,
+    pub cache_hit_depth_model: AccumulationModel<MaxDepth, Weighted>,
     pub deadline_miss_model: Weighted,
     pub search_log: Vec<SearchInfo>,
 
@@ -40,7 +42,7 @@ impl Logger {
         }
     }
 
-    pub(super) fn register_cache_hit(&mut self, depth: Bound, eval: &Evaluation) {
+    pub(super) fn register_cache_hit(&mut self, depth: MaxDepth, eval: &Evaluation) {
         if !self.log_cache_info {
             return;
         }
@@ -48,13 +50,13 @@ impl Logger {
         let hit = Weighted::new(1.0);
         self.cache_hit_chance_model.add_to(depth, hit);
 
-        if let Bound::Bounded(_) = eval.depth {
-            let hit_depth = Weighted::new(eval.depth.max_u8().into());
+        if let MaxDepth::Bounded(_) = eval.min_depth {
+            let hit_depth = Weighted::new(eval.min_depth.max_u8().into());
             self.cache_hit_depth_model.add_to(depth, hit_depth);
         }
     }
 
-    pub(super) fn register_cache_miss(&mut self, depth: Bound) {
+    pub(super) fn register_cache_miss(&mut self, depth: MaxDepth) {
         if !self.log_cache_info {
             return;
         }
@@ -66,10 +68,10 @@ impl Logger {
     pub(super) fn register_lookup_result(
         &mut self,
         result: Option<&Evaluation>,
-        depth_limit: Bound,
+        depth_limit: max_depth::MaxDepth,
     ) {
         match result {
-            Some(result) => self.register_cache_hit(depth_limit, result),
+            Some(eval) => self.register_cache_hit(depth_limit, eval),
             None => self.register_cache_miss(depth_limit),
         }
     }
@@ -125,8 +127,8 @@ impl Logger {
                 println!("Searching for {duration}");
             }
 
-            if let Some(max_depth) = constraint.max_depth.bound() {
-                println!("Until depth {max_depth}");
+            if !constraint.max_depth.is_unlimited() {
+                println!("Until depth {}", constraint.max_depth);
             }
         }
 
@@ -191,7 +193,7 @@ impl Logger {
             -(deadline - end_time).as_secs_f64()
         };
 
-        let avg_miss_seconds = self.deadline_miss_model.average_value();
+        let avg_miss_seconds = self.deadline_miss_model.weighted_average();
         let miss_err = (avg_miss_seconds - miss_seconds).abs();
         let outlier_threshold = Duration::from_micros(5);
         if miss_err.is_nan() || Duration::from_secs_f64(miss_err) <= outlier_threshold {
@@ -206,7 +208,7 @@ impl Logger {
         let miss_duration = utils::get_signed_duration(miss_seconds);
         println!("Deadline missed by {miss_duration:?}");
 
-        let avg_miss_seconds = self.deadline_miss_model.average_value();
+        let avg_miss_seconds = self.deadline_miss_model.weighted_average();
         let avg_miss = utils::get_signed_duration(avg_miss_seconds);
         println!("Avg miss: {avg_miss:?}");
     }

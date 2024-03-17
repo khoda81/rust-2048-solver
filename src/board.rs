@@ -10,8 +10,7 @@ use rand::{
     Rng,
 };
 
-use crate::game::Transition;
-use crate::shift_row::shift_row;
+use crate::shift_row::swipe_left;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
@@ -21,15 +20,13 @@ pub enum Direction {
     Right,
 }
 
-impl Distribution<Direction> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Direction {
-        match rng.gen_range(0..=3) {
-            0 => Direction::Up,
-            1 => Direction::Down,
-            2 => Direction::Left,
-            _ => Direction::Right,
-        }
-    }
+impl Direction {
+    pub const ALL: &'static [Self] = &[
+        Direction::Up,
+        Direction::Down,
+        Direction::Left,
+        Direction::Right,
+    ];
 }
 
 impl fmt::Display for Direction {
@@ -44,13 +41,6 @@ impl fmt::Display for Direction {
         f.write_char(arrow)
     }
 }
-
-const ALL_ACTIONS: [Direction; 4] = [
-    Direction::Up,
-    Direction::Down,
-    Direction::Left,
-    Direction::Right,
-];
 
 pub type Weight = u8;
 pub type Cell = u8;
@@ -88,7 +78,6 @@ impl<const COLS: usize, const ROWS: usize> Default for StateOf2048<COLS, ROWS> {
     }
 }
 
-#[allow(clippy::unnecessary_fold)]
 impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
     pub fn new() -> Self {
         [[0; COLS]; ROWS].into()
@@ -96,26 +85,8 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
 
     #[inline(always)]
     pub fn count_empty(&self) -> usize {
+        // PERF: this can probably be optimized
         self.iter().flatten().filter(|&c| c == &0).count()
-    }
-
-    // TODO: move this to game
-    pub fn iter_transitions(&self) -> impl Iterator<Item = Transition<Self, Direction, f32>> + '_ {
-        let possible_actions = (!self.is_lost())
-            .then_some(ALL_ACTIONS)
-            .into_iter()
-            .flatten();
-
-        possible_actions.filter_map(|action| {
-            self.swiped(action).map(|next_state| {
-                Transition {
-                    action,
-                    // TODO replace with the actual reward
-                    reward: 1.0,
-                    next_state,
-                }
-            })
-        })
     }
 
     #[inline(always)]
@@ -125,6 +96,7 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
 
     #[inline(always)]
     pub fn iter_spawns(self) -> impl Iterator<Item = (Self, Weight)> {
+        // PERF: this can probably be optimized
         self.into_iter()
             .enumerate()
             .flat_map(|(i, row)| {
@@ -143,6 +115,7 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
 
     #[inline(always)]
     pub fn iter_spawns_random(self) -> impl Iterator<Item = (Self, Weight)> {
+        // PERF: this can probably be optimized
         let mut positions = Vec::with_capacity(16);
         positions.extend(self.into_iter().enumerate().flat_map(|(i, row)| {
             row.into_iter()
@@ -162,6 +135,7 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
 
     #[inline(always)]
     pub fn random_spawn(&self) -> Self {
+        // PERF: this can probably be optimized
         let options: Vec<_> = self.spawns().collect();
         let weights = options.iter().map(|(_board, weight)| weight);
         let dist = WeightedIndex::new(weights).unwrap();
@@ -172,15 +146,16 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
 
     #[inline(always)]
     pub fn swipe_left(&mut self) -> bool {
-        self.iter_mut().map(shift_row).fold(false, bool::max)
+        self.iter_mut().map(swipe_left).fold(false, bool::max)
     }
 
     #[inline(always)]
     pub fn swipe_right(&mut self) -> bool {
         self.iter_mut()
             .map(|row| {
+                // PERF: we need a custom swipe_right
                 row.reverse();
-                let moved = shift_row(row);
+                let moved = swipe_left(row);
                 row.reverse();
                 moved
             })
@@ -192,7 +167,7 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
         self.columns()
             .enumerate()
             .map(|(i, mut column)| {
-                let moved = shift_row(&mut column);
+                let moved = swipe_left(&mut column);
                 column.into_iter().enumerate().for_each(|(j, cell)| {
                     self[j][i] = cell;
                 });
@@ -208,7 +183,7 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
             .enumerate()
             .map(|(i, mut column)| {
                 column.reverse();
-                let moved = shift_row(&mut column);
+                let moved = swipe_left(&mut column);
                 column.into_iter().rev().enumerate().for_each(|(j, cell)| {
                     self[j][i] = cell;
                 });

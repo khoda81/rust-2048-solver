@@ -5,15 +5,16 @@ mod bench_mean_max_2048 {
     extern crate test;
 
     use rust_2048_solver::{
-        board::StateOf2048,
-        bots::mean_max::{Bound, MeanMax, SearchConstraint},
+        bots::mean_max::{max_depth::MaxDepth as Bound, MeanMax, SearchConstraint},
+        game,
     };
 
     use test::{black_box, Bencher};
 
+    // TODO: use criterion for benchmarking
     fn bench_state<const COLS: usize, const ROWS: usize>(
         b: &mut Bencher,
-        state: StateOf2048<COLS, ROWS>,
+        state: game::Swipe2048<COLS, ROWS>,
         search_constrain: SearchConstraint,
     ) {
         let mut ai = MeanMax::new();

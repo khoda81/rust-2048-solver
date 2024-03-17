@@ -59,7 +59,7 @@ impl<T, W> Weighted<T, W> {
         }
     }
 
-    pub fn average_value<R>(self) -> R
+    pub fn weighted_average<R>(self) -> R
     where
         T: Div<W, Output = R>,
     {
@@ -86,7 +86,7 @@ impl<T: AddAssign, W: AddAssign> AddAssign for Weighted<T, W> {
 
 impl<T: Display + Div<W, Output = T> + Clone, W: Display + Clone> Display for Weighted<T, W> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.clone().average_value().fmt(f)?;
+        self.clone().weighted_average().fmt(f)?;
         f.write_str(" (")?;
         self.total_value.fmt(f)?;
         f.write_char('/')?;
