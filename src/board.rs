@@ -1,16 +1,12 @@
+pub mod fast_swipe;
+
+use rand::distributions::{Distribution, WeightedIndex};
+use rand::seq::SliceRandom;
 use std::fmt::Write as _;
 use std::{
     array, fmt,
     ops::{Deref, DerefMut},
 };
-
-use rand::seq::SliceRandom;
-use rand::{
-    distributions::{Distribution, Standard, WeightedIndex},
-    Rng,
-};
-
-use crate::shift_row::swipe_left;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
@@ -31,14 +27,12 @@ impl Direction {
 
 impl fmt::Display for Direction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let arrow = match self {
-            Direction::Up => '↑',
-            Direction::Down => '↓',
-            Direction::Left => '←',
-            Direction::Right => '→',
-        };
-
-        f.write_char(arrow)
+        match self {
+            Direction::Up => f.write_char('↑'),
+            Direction::Down => f.write_char('↓'),
+            Direction::Left => f.write_char('←'),
+            Direction::Right => f.write_char('→'),
+        }
     }
 }
 
@@ -83,18 +77,15 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
         [[0; COLS]; ROWS].into()
     }
 
-    #[inline(always)]
     pub fn count_empty(&self) -> usize {
         // PERF: this can probably be optimized
         self.iter().flatten().filter(|&c| c == &0).count()
     }
 
-    #[inline(always)]
     pub fn spawns(&self) -> impl Iterator<Item = (Self, Weight)> {
         self.iter_spawns()
     }
 
-    #[inline(always)]
     pub fn iter_spawns(self) -> impl Iterator<Item = (Self, Weight)> {
         // PERF: this can probably be optimized
         self.into_iter()
@@ -113,7 +104,6 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
             })
     }
 
-    #[inline(always)]
     pub fn iter_spawns_random(self) -> impl Iterator<Item = (Self, Weight)> {
         // PERF: this can probably be optimized
         let mut positions = Vec::with_capacity(16);
@@ -133,7 +123,6 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
         })
     }
 
-    #[inline(always)]
     pub fn random_spawn(&self) -> Self {
         // PERF: this can probably be optimized
         let options: Vec<_> = self.spawns().collect();
@@ -144,30 +133,23 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
         options[index].0
     }
 
-    #[inline(always)]
     pub fn swipe_left(&mut self) -> bool {
-        self.iter_mut().map(swipe_left).fold(false, bool::max)
-    }
-
-    #[inline(always)]
-    pub fn swipe_right(&mut self) -> bool {
         self.iter_mut()
-            .map(|row| {
-                // PERF: we need a custom swipe_right
-                row.reverse();
-                let moved = swipe_left(row);
-                row.reverse();
-                moved
-            })
+            .map(fast_swipe::swipe_left)
             .fold(false, bool::max)
     }
 
-    #[inline(always)]
+    pub fn swipe_right(&mut self) -> bool {
+        self.iter_mut()
+            .map(fast_swipe::swipe_right)
+            .fold(false, bool::max)
+    }
+
     pub fn swipe_up(&mut self) -> bool {
         self.columns()
             .enumerate()
             .map(|(i, mut column)| {
-                let moved = swipe_left(&mut column);
+                let moved = fast_swipe::swipe_left(&mut column);
                 column.into_iter().enumerate().for_each(|(j, cell)| {
                     self[j][i] = cell;
                 });
@@ -177,13 +159,12 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
             .fold(false, bool::max)
     }
 
-    #[inline(always)]
     pub fn swipe_down(&mut self) -> bool {
         self.columns()
             .enumerate()
             .map(|(i, mut column)| {
                 column.reverse();
-                let moved = swipe_left(&mut column);
+                let moved = fast_swipe::swipe_left(&mut column);
                 column.into_iter().rev().enumerate().for_each(|(j, cell)| {
                     self[j][i] = cell;
                 });
@@ -193,18 +174,18 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
             .fold(false, bool::max)
     }
 
-    #[inline(always)]
+    #[must_use]
     pub fn is_lost(&self) -> bool {
         !self.has_move()
     }
 
+    #[must_use]
     pub fn has_move(&self) -> bool {
         self.iter().flatten().any(|&x| x == 0)
             || (0..ROWS - 1).any(|i| (0..COLS).any(|j| self[i][j] == self[i + 1][j]))
             || (0..ROWS).any(|i| (0..COLS - 1).any(|j| self[i][j] == self[i][j + 1]))
     }
 
-    #[inline(always)]
     pub fn swipe(&mut self, direction: Direction) -> bool {
         match direction {
             Direction::Left => self.swipe_left(),
@@ -214,7 +195,7 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
         }
     }
 
-    #[inline(always)]
+    #[must_use]
     pub fn swiped(mut self, direction: Direction) -> Option<Self> {
         match direction {
             Direction::Left => self.swipe_left(),
@@ -236,7 +217,8 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
 
 impl<const COLS: usize, const ROWS: usize> fmt::Display for StateOf2048<COLS, ROWS> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Print the first row without nextline
+        // TODO: why not print '\n' for the first row?
+        // Print the first row without '\n'
         if let Some(row) = self.first() {
             format_row(row, f)?;
         }
@@ -290,3 +272,5 @@ impl<const COLS: usize, const ROWS: usize> DerefMut for StateOf2048<COLS, ROWS> 
         &mut self.cells
     }
 }
+
+// TODO: Add tests

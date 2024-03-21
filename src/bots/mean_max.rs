@@ -89,6 +89,18 @@ impl SearchConstraint {
     pub fn has_lower_depth(&self) -> bool {
         (self.max_depth - 1).is_some()
     }
+
+    #[must_use]
+    pub fn with_deadline(mut self, deadline: Instant) -> Self {
+        self.deadline = Some(deadline);
+        self
+    }
+
+    #[must_use]
+    pub fn with_max_depth(mut self, max_depth: max_depth::MaxDepth) -> Self {
+        self.max_depth = max_depth;
+        self
+    }
 }
 
 // TODO: Add concurrency to cache and search

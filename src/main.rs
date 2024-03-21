@@ -1,8 +1,5 @@
 use rust_2048_solver::{bots::mean_max, game, utils};
-use std::{
-    fmt::Display,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 fn main() {
     // show_map(heuristic::get_lookup());
@@ -23,13 +20,9 @@ fn main() {
         let deadline = Instant::now() + search_duration;
 
         #[allow(clippy::needless_update)]
-        let search_constraint = mean_max::SearchConstraint {
-            deadline: Some(deadline),
-            // max_depth: Bound::new(3),
-
-            // Set the remaining values to defaults
-            ..Default::default()
-        };
+        let search_constraint = mean_max::SearchConstraint::default()
+            // .with_max_depth(mean_max::max_depth::MaxDepth::new(3))
+            .with_deadline(deadline);
 
         let Some(decision) = ai.decide_until(&game, search_constraint) else {
             println!("The agent resigned!");

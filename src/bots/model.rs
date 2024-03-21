@@ -28,6 +28,7 @@ impl<K, V> Default for AccumulationModel<K, V> {
 impl<K, V> AccumulationModel<K, V> {
     pub fn new() -> Self {
         Self {
+            // PERF: replace this with [Vec] binary search
             memory: HashMap::new(),
         }
     }

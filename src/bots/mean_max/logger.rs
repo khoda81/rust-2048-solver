@@ -124,6 +124,7 @@ impl Logger {
 
             if let Some(deadline) = constraint.deadline {
                 let duration = utils::HumanDuration(deadline.duration_since(start_time));
+                // TODO: use a logging library
                 println!("Searching for {duration}");
             }
 

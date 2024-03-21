@@ -183,6 +183,7 @@ pub fn heuristic(preprocessed_board: PreprocessedBoard) -> Eval {
 }
 
 fn empty_count_max_cell_lookup(preprocessed_board: (EmptyCount, MaxCell)) -> Option<Eval> {
+    // PERF: replace this with binary search
     get_lookup().get(&preprocessed_board).copied()
 }
 

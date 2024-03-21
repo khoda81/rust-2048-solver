@@ -12,6 +12,7 @@ pub struct Transition<Action, Reward, State> {
 type Reward = f32;
 type Action = Direction;
 
+// TODO: give this a better name
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Swipe2048<const COLS: usize, const ROWS: usize> {
     pub state: StateOf2048<COLS, ROWS>,

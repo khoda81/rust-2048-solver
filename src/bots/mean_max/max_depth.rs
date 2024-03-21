@@ -63,6 +63,7 @@ impl ops::AddAssign<u8> for MaxDepth {
     }
 }
 
+// NOTE: We can't implement SubAssign since the subtracks may overflow
 impl ops::Sub<u8> for MaxDepth {
     type Output = Option<Self>;
 
@@ -71,12 +72,6 @@ impl ops::Sub<u8> for MaxDepth {
             Some(bound) => NonZeroU8::new(bound.get().saturating_sub(rhs)).map(Self::Bounded),
             None => Some(MaxDepth::Unlimited),
         }
-    }
-}
-
-impl ops::SubAssign<u8> for MaxDepth {
-    fn sub_assign(&mut self, rhs: u8) {
-        *self = *self + rhs;
     }
 }
 
