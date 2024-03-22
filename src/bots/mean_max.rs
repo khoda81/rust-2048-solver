@@ -13,7 +13,7 @@ pub struct Evaluation {
     /// Expected value of the given state.
     pub value: Value,
 
-    /// Minimum depth of searched tree ([max_depth::MaxDepth::Unlimited] means this is the eval for a full search tree).
+    /// Minimum depth of searched tree ([max_depth::MaxDepth::Unlimited] means this is the eval of a full search tree).
     pub min_depth: max_depth::MaxDepth,
 }
 

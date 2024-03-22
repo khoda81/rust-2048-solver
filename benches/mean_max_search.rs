@@ -6,19 +6,19 @@ use rust_2048_solver::{
 
 fn run_search<const COLS: usize, const ROWS: usize>(
     b: &mut Bencher,
-    input: &(game::Swipe2048<COLS, ROWS>, SearchConstraint),
+    input: &(game::GameState<COLS, ROWS>, SearchConstraint),
 ) {
-    let &(state, search_constraint) = input;
+    let &(ref state, search_constraint) = input;
 
     b.iter_batched(
         MeanMax::new,
-        |mut ai| ai.decide_until(&state, search_constraint),
+        |mut ai| ai.decide_until(state, search_constraint),
         criterion::BatchSize::PerIteration,
     )
 }
 
 pub fn bench_search_depth(c: &mut Criterion) {
-    let mut bench_search = |state: game::Swipe2048<4, 4>, constraint: SearchConstraint| {
+    let mut bench_search = |state: game::GameState<4, 4>, constraint: SearchConstraint| {
         let parameter_display = format!("{constraint:?}");
 
         c.bench_with_input(

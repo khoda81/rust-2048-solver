@@ -1,4 +1,5 @@
 #![feature(slice_flatten)]
+// TODO: Rename project to brickfish.
 
 pub mod board;
 pub mod symmetric_board;

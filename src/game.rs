@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use crate::board::{self, Direction, StateOf2048};
+use crate::board::{self, Cells, Direction};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Transition<Action, Reward, State> {
@@ -12,18 +12,17 @@ pub struct Transition<Action, Reward, State> {
 type Reward = f32;
 type Action = Direction;
 
-// TODO: give this a better name
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct Swipe2048<const COLS: usize, const ROWS: usize> {
-    pub state: StateOf2048<COLS, ROWS>,
+pub struct GameState<const COLS: usize, const ROWS: usize> {
+    pub state: Cells<COLS, ROWS>,
 }
 
-impl<const ROWS: usize, const COLS: usize> Swipe2048<ROWS, COLS> {
+impl<const ROWS: usize, const COLS: usize> GameState<ROWS, COLS> {
     const ACTIONS: &'static [Action] = Action::ALL;
 
     pub fn create() -> Self {
-        Swipe2048 {
-            state: StateOf2048::new().random_spawn(),
+        GameState {
+            state: Cells::new().random_spawn(),
         }
     }
 
@@ -38,13 +37,13 @@ impl<const ROWS: usize, const COLS: usize> Swipe2048<ROWS, COLS> {
     pub fn half_step(
         self,
         action: Action,
-    ) -> Option<Transition<Action, Reward, Spawn2048<ROWS, COLS>>> {
+    ) -> Option<Transition<Action, Reward, Cells<ROWS, COLS>>> {
         let mut state = self.state;
         if !state.swipe(action) {
             return None;
         }
 
-        // TODO: replace with the actual reward
+        // TODO: Replace with the actual reward.
         let reward = 1.0;
 
         Some(Transition {
@@ -60,7 +59,7 @@ impl<const ROWS: usize, const COLS: usize> Swipe2048<ROWS, COLS> {
 
     pub fn transitions(
         &self,
-    ) -> impl Iterator<Item = Transition<Action, Reward, Spawn2048<ROWS, COLS>>> + '_ {
+    ) -> impl Iterator<Item = Transition<Action, Reward, Cells<ROWS, COLS>>> + '_ {
         let possible_actions = (!self.terminal())
             .then_some(Self::ACTIONS)
             .into_iter()
@@ -70,26 +69,24 @@ impl<const ROWS: usize, const COLS: usize> Swipe2048<ROWS, COLS> {
     }
 }
 
-impl<const ROWS: usize, const COLS: usize> Display for Swipe2048<ROWS, COLS> {
+impl<const ROWS: usize, const COLS: usize> Display for GameState<ROWS, COLS> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.state.fmt(f)
     }
 }
 
 impl<const ROWS: usize, const COLS: usize> From<[[board::Cell; COLS]; ROWS]>
-    for Swipe2048<COLS, ROWS>
+    for GameState<COLS, ROWS>
 {
     fn from(cells: [[board::Cell; COLS]; ROWS]) -> Self {
-        Swipe2048 {
+        GameState {
             state: cells.into(),
         }
     }
 }
 
-impl<const ROWS: usize, const COLS: usize> From<StateOf2048<COLS, ROWS>> for Swipe2048<COLS, ROWS> {
-    fn from(state: StateOf2048<COLS, ROWS>) -> Self {
+impl<const ROWS: usize, const COLS: usize> From<Cells<COLS, ROWS>> for GameState<COLS, ROWS> {
+    fn from(state: Cells<COLS, ROWS>) -> Self {
         Self { state }
     }
 }
-
-pub type Spawn2048<const ROWS: usize, const COLS: usize> = StateOf2048<ROWS, COLS>;

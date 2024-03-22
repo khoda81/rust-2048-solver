@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use lazy_static::lazy_static;
 
-use crate::board::{Cell, StateOf2048};
+use crate::board::{Cell, Cells};
 
 #[derive(Copy, Clone, Debug, Hash, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EmptyCount(pub u8);
@@ -12,7 +12,7 @@ pub type PreprocessedBoard = (EmptyCount, MaxCell);
 pub type Eval = f64;
 
 pub fn preprocess_board<const ROWS: usize, const COLS: usize>(
-    board: &StateOf2048<ROWS, COLS>,
+    board: &Cells<ROWS, COLS>,
 ) -> (EmptyCount, MaxCell) {
     (
         EmptyCount(board.count_empty() as u8),
@@ -183,7 +183,7 @@ pub fn heuristic(preprocessed_board: PreprocessedBoard) -> Eval {
 }
 
 fn empty_count_max_cell_lookup(preprocessed_board: (EmptyCount, MaxCell)) -> Option<Eval> {
-    // PERF: replace this with binary search
+    // PERF: Replace this with binary search.
     get_lookup().get(&preprocessed_board).copied()
 }
 

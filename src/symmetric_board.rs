@@ -29,12 +29,12 @@ impl Distribution<Direction> for Standard {
 
 #[derive(Clone, Debug, Eq)]
 pub struct SymmetricBoard<const COLS: usize, const ROWS: usize> {
-    max_board: board::StateOf2048<COLS, ROWS>,
+    max_board: board::Cells<COLS, ROWS>,
 }
 
 impl<const COLS: usize, const ROWS: usize> Default for SymmetricBoard<COLS, ROWS> {
     fn default() -> Self {
-        board::StateOf2048::default().into()
+        board::Cells::default().into()
     }
 }
 
@@ -56,10 +56,10 @@ impl<const COLS: usize, const ROWS: usize> fmt::Display for SymmetricBoard<COLS,
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> From<board::StateOf2048<COLS, ROWS>>
+impl<const COLS: usize, const ROWS: usize> From<board::Cells<COLS, ROWS>>
     for SymmetricBoard<COLS, ROWS>
 {
-    fn from(board: board::StateOf2048<COLS, ROWS>) -> Self {
+    fn from(board: board::Cells<COLS, ROWS>) -> Self {
         board.cells.into()
     }
 }
@@ -110,7 +110,7 @@ mod test_super {
     #[test]
     fn test_symmetry() {
         // let board = board::Board::from([[2, 1], [0, 0]]);
-        let board = board::StateOf2048::from([
+        let board = board::Cells::from([
             // board
             [1, 0, 0, 0],
             [0, 0, 0, 0],

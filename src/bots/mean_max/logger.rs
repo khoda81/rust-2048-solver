@@ -124,7 +124,7 @@ impl Logger {
 
             if let Some(deadline) = constraint.deadline {
                 let duration = utils::HumanDuration(deadline.duration_since(start_time));
-                // TODO: use a logging library
+                // TODO: Use a logging library.
                 println!("Searching for {duration}");
             }
 
@@ -200,6 +200,8 @@ impl Logger {
         if miss_err.is_nan() || Duration::from_secs_f64(miss_err) <= outlier_threshold {
             self.deadline_miss_model += Weighted::new(miss_seconds);
         } else {
+            // FIX: This can be thrown off if a high miss happens at the start.
+            // TODO: Loop over all the searches every time.
             eprintln!(
                 "Ignoring miss since it has a high error ({miss_duration:.1?}>{outlier_threshold:.1?})",
                 miss_duration = Duration::from_secs_f64(miss_err),

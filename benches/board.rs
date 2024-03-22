@@ -2,21 +2,27 @@ use criterion::BenchmarkId;
 use criterion::{criterion_group, Criterion, Throughput};
 use rand::seq::SliceRandom;
 use rust_2048_solver::{
-    board::{Direction, StateOf2048},
+    board::{Cells, Direction},
     game,
 };
 use std::hash::{self, Hash as _};
 
-type State = StateOf2048<4, 4>;
+type State = Cells<4, 4>;
 
 fn generate_states(count: usize) -> Vec<State> {
-    let starting_state = State::from([[3, 3, 1, 1], [1, 0, 5, 0], [0, 2, 7, 4], [6, 1, 6, 8]]);
+    #[rustfmt::skip]
+    let starting_state = State::from([
+        [3, 3, 1, 1],
+        [1, 0, 5, 0],
+        [0, 2, 7, 4],
+        [6, 1, 6, 8],
+    ]);
 
     let mut states = vec![starting_state];
     let mut rng = rand::thread_rng();
     while states.len() < count {
         let state = *states.choose(&mut rng).unwrap();
-        let game = game::Swipe2048::from(state);
+        let game = game::GameState::from(state);
         let iter = game
             .transitions()
             .flat_map(|transition| transition.next.spawns())
@@ -61,7 +67,7 @@ fn bench_board_swipe(c: &mut Criterion) {
             board.swipe(Direction::Left);
 
             if board.is_lost() {
-                board = StateOf2048::new();
+                board = Cells::new();
             }
         })
     });

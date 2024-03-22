@@ -40,11 +40,11 @@ pub type Weight = u8;
 pub type Cell = u8;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct StateOf2048<const COLS: usize, const ROWS: usize> {
+pub struct Cells<const COLS: usize, const ROWS: usize> {
     pub cells: [[Cell; COLS]; ROWS],
 }
 
-impl<const COLS: usize, const ROWS: usize> std::hash::Hash for StateOf2048<COLS, ROWS> {
+impl<const COLS: usize, const ROWS: usize> std::hash::Hash for Cells<COLS, ROWS> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         let cells = self.cells.flatten();
         let chunks = cells.chunks_exact(8);
@@ -66,28 +66,29 @@ impl<const COLS: usize, const ROWS: usize> std::hash::Hash for StateOf2048<COLS,
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> Default for StateOf2048<COLS, ROWS> {
+impl<const COLS: usize, const ROWS: usize> Default for Cells<COLS, ROWS> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
+impl<const COLS: usize, const ROWS: usize> Cells<COLS, ROWS> {
     pub fn new() -> Self {
         [[0; COLS]; ROWS].into()
     }
 
     pub fn count_empty(&self) -> usize {
-        // PERF: this can probably be optimized
-        self.iter().flatten().filter(|&c| c == &0).count()
+        // NOTE: This is optimized to use SIMD.
+        self.into_iter().flatten().filter(|&c| c == 0).count()
     }
 
     pub fn spawns(&self) -> impl Iterator<Item = (Self, Weight)> {
-        self.iter_spawns()
+        self.into_spawns()
     }
 
-    pub fn iter_spawns(self) -> impl Iterator<Item = (Self, Weight)> {
-        // PERF: this can probably be optimized
+    #[deprecated]
+    pub fn into_spawns(self) -> impl Iterator<Item = (Self, Weight)> {
+        // PERF: We should be able to represent the state of this iterator using a single 128 bit mask
         self.into_iter()
             .enumerate()
             .flat_map(|(i, row)| {
@@ -105,7 +106,7 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
     }
 
     pub fn iter_spawns_random(self) -> impl Iterator<Item = (Self, Weight)> {
-        // PERF: this can probably be optimized
+        // PERF: This can probably be optimized
         let mut positions = Vec::with_capacity(16);
         positions.extend(self.into_iter().enumerate().flat_map(|(i, row)| {
             row.into_iter()
@@ -124,7 +125,7 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
     }
 
     pub fn random_spawn(&self) -> Self {
-        // PERF: this can probably be optimized
+        // PERF: Don't generate all the possible states beforehand
         let options: Vec<_> = self.spawns().collect();
         let weights = options.iter().map(|(_board, weight)| weight);
         let dist = WeightedIndex::new(weights).unwrap();
@@ -206,6 +207,17 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
         .then_some(self)
     }
 
+    pub fn transposed(self) -> Cells<ROWS, COLS> {
+        let mut transposed = [[0; ROWS]; COLS];
+        for row in 0..ROWS {
+            for col in 0..COLS {
+                transposed[col][row] = self[row][col];
+            }
+        }
+
+        Cells::from(transposed)
+    }
+
     pub fn columns(self) -> impl Iterator<Item = [Cell; ROWS]> {
         (0..COLS).map(move |i| array::from_fn(|j| self[j][i]))
     }
@@ -215,17 +227,11 @@ impl<const COLS: usize, const ROWS: usize> StateOf2048<COLS, ROWS> {
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> fmt::Display for StateOf2048<COLS, ROWS> {
+impl<const COLS: usize, const ROWS: usize> fmt::Display for Cells<COLS, ROWS> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // TODO: why not print '\n' for the first row?
-        // Print the first row without '\n'
-        if let Some(row) = self.first() {
+        for row in self.iter() {
             format_row(row, f)?;
-        }
-
-        for row in &self[1..] {
             writeln!(f)?;
-            format_row(row, f)?;
         }
 
         Ok(())
@@ -247,19 +253,19 @@ fn format_row(last_row: &[Cell], f: &mut fmt::Formatter<'_>) -> Result<(), fmt::
     Ok(())
 }
 
-impl<const COLS: usize, const ROWS: usize> From<[[Cell; COLS]; ROWS]> for StateOf2048<COLS, ROWS> {
+impl<const COLS: usize, const ROWS: usize> From<[[Cell; COLS]; ROWS]> for Cells<COLS, ROWS> {
     fn from(cells: [[Cell; COLS]; ROWS]) -> Self {
         Self { cells }
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> From<StateOf2048<COLS, ROWS>> for [[Cell; COLS]; ROWS] {
-    fn from(board: StateOf2048<COLS, ROWS>) -> Self {
+impl<const COLS: usize, const ROWS: usize> From<Cells<COLS, ROWS>> for [[Cell; COLS]; ROWS] {
+    fn from(board: Cells<COLS, ROWS>) -> Self {
         *board
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> Deref for StateOf2048<COLS, ROWS> {
+impl<const COLS: usize, const ROWS: usize> Deref for Cells<COLS, ROWS> {
     type Target = [[Cell; COLS]; ROWS];
 
     fn deref(&self) -> &Self::Target {
@@ -267,10 +273,104 @@ impl<const COLS: usize, const ROWS: usize> Deref for StateOf2048<COLS, ROWS> {
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> DerefMut for StateOf2048<COLS, ROWS> {
+impl<const COLS: usize, const ROWS: usize> DerefMut for Cells<COLS, ROWS> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.cells
     }
 }
 
-// TODO: Add tests
+#[cfg(test)]
+mod test_board {
+    use super::Cells;
+
+    type TestCase = ([[u8; 4]; 4], [[u8; 4]; 4]);
+
+    const TEST_CASES: &[TestCase] = &[
+        (
+            [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+            [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+        ),
+        (
+            [[1, 0, 0, 0], [0, 0, 0, 0], [3, 0, 0, 0], [0, 0, 0, 0]],
+            [[1, 0, 0, 0], [0, 0, 0, 0], [3, 0, 0, 0], [0, 0, 0, 0]],
+        ),
+        (
+            [[1, 0, 1, 0], [0, 2, 1, 1], [0, 0, 0, 0], [1, 2, 1, 0]],
+            [[2, 0, 0, 0], [2, 2, 0, 0], [0, 0, 0, 0], [1, 2, 1, 0]],
+        ),
+        (
+            [[0, 0, 1, 1], [0, 0, 9, 1], [0, 1, 1, 3], [1, 6, 2, 5]],
+            [[2, 0, 0, 0], [9, 1, 0, 0], [2, 3, 0, 0], [1, 6, 2, 5]],
+        ),
+        (
+            [[2, 0, 0, 2], [1, 3, 0, 0], [6, 1, 5, 0], [1, 2, 9, 2]],
+            [[3, 0, 0, 0], [1, 3, 0, 0], [6, 1, 5, 0], [1, 2, 9, 2]],
+        ),
+        (
+            [[1, 6, 3, 2], [0, 0, 9, 1], [0, 0, 0, 3], [0, 2, 0, 5]],
+            [[1, 6, 3, 2], [9, 1, 0, 0], [3, 0, 0, 0], [2, 5, 0, 0]],
+        ),
+        (
+            [[0, 0, 0, 0], [1, 0, 0, 0], [0, 1, 3, 9], [3, 6, 1, 5]],
+            [[0, 0, 0, 0], [1, 0, 0, 0], [1, 3, 9, 0], [3, 6, 1, 5]],
+        ),
+        (
+            [[0, 0, 0, 2], [2, 0, 1, 1], [0, 0, 9, 3], [2, 6, 1, 5]],
+            [[2, 0, 0, 0], [2, 2, 0, 0], [9, 3, 0, 0], [2, 6, 1, 5]],
+        ),
+        (
+            [[1, 6, 1, 5], [1, 2, 5, 1], [1, 3, 4, 1], [6, 0, 0, 0]],
+            [[1, 6, 1, 5], [1, 2, 5, 1], [1, 3, 4, 1], [6, 0, 0, 0]],
+        ),
+        (
+            [[2, 7, 3, 1], [3, 5, 7, 0], [2, 7, 2, 1], [1, 0, 0, 0]],
+            [[2, 7, 3, 1], [3, 5, 7, 0], [2, 7, 2, 1], [1, 0, 0, 0]],
+        ),
+    ];
+
+    #[test]
+    fn test_swipe() {
+        let reversed = |mut row: [u8; 4]| {
+            row.reverse();
+            row
+        };
+
+        for (inp, expected_out) in TEST_CASES.iter().copied() {
+            let inp = Cells::from(inp);
+            let expected_out = Cells::from(expected_out);
+
+            {
+                let mut cells = inp;
+                assert_eq!(cells.swipe_left(), inp != expected_out, "Input: {inp:?}");
+                assert_eq!(cells, expected_out, "Input: {inp:?}");
+            }
+            {
+                let inp = Cells::from(inp.map(reversed));
+                let expected_out = Cells::from(expected_out.map(reversed));
+
+                let mut cells = inp;
+                assert_eq!(cells.swipe_right(), inp != expected_out, "Input: {inp:?}");
+                assert_eq!(cells, expected_out, "Input: {inp:?}");
+            }
+            {
+                let inp = inp.transposed();
+                let expected_out = expected_out.transposed();
+
+                let mut cells = inp;
+                assert_eq!(cells.swipe_up(), inp != expected_out, "Input: {inp:?}");
+                assert_eq!(cells, expected_out, "Input: {inp:?}");
+            }
+            {
+                let inp = Cells::from(inp.map(reversed)).transposed();
+                let expected_out = Cells::from(expected_out.map(reversed)).transposed();
+
+                let mut cells = inp;
+                assert_eq!(cells.swipe_down(), inp != expected_out, "Input: {inp:?}");
+                assert_eq!(cells, expected_out, "Input: {inp:?}");
+            }
+        }
+    }
+
+    // TODO: Test count empty
+    // TODO: Test iter spawns
+}

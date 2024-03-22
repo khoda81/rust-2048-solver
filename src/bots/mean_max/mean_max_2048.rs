@@ -1,16 +1,16 @@
 use super::{EvaluatedAction, Evaluation, MeanMax, SearchConstraint, SearchError, Value};
 use crate::{
-    board::Direction,
+    board::{Cells, Direction},
     bots::{heuristic, model::weighted::Weighted},
     game,
 };
 use std::time::{Duration, Instant};
 
 pub type Action = Direction;
-pub type State<const ROWS: usize, const COLS: usize> = game::Swipe2048<ROWS, COLS>;
+pub type State<const ROWS: usize, const COLS: usize> = game::GameState<ROWS, COLS>;
 
 pub type Transition<const ROWS: usize, const COLS: usize> =
-    game::Transition<Action, Value, game::Spawn2048<ROWS, COLS>>;
+    game::Transition<Action, Value, Cells<ROWS, COLS>>;
 
 pub type OptionEvaluation = Option<Evaluation>;
 pub type EvaluationResult = Result<Evaluation, SearchError>;
@@ -18,9 +18,9 @@ pub type Decision = Option<EvaluatedAction<Action>>;
 pub type DecisionResult = Result<Decision, SearchError>;
 
 impl<const ROWS: usize, const COLS: usize>
-    MeanMax<game::Spawn2048<ROWS, COLS>, heuristic::PreprocessedBoard>
+    MeanMax<Cells<ROWS, COLS>, heuristic::PreprocessedBoard>
 {
-    fn train_model(&mut self, state: &game::Spawn2048<ROWS, COLS>, eval: Evaluation) {
+    fn train_model(&mut self, state: &Cells<ROWS, COLS>, eval: Evaluation) {
         let preprocessed_board = heuristic::preprocess_board(state);
         let prev_eval = self.model.entry(preprocessed_board).or_default();
 
@@ -28,7 +28,7 @@ impl<const ROWS: usize, const COLS: usize>
         prev_eval.total_value *= decay;
         prev_eval.total_weight *= decay;
 
-        // TODO: find a better way to do this
+        // TODO: Find a better way to weigh samples.
 
         // let weight = 2.0_f64.powi(eval.depth.into()) as heuristic::Eval;
         let weight = 1.0;
@@ -62,6 +62,7 @@ impl<const ROWS: usize, const COLS: usize>
     }
 
     pub fn make_decision(&mut self, state: &State<ROWS, COLS>) -> DecisionResult {
+        // TODO: Make this iterative instead of recursive.
         let mut best: Decision = None;
 
         for transition in state.transitions() {
@@ -101,7 +102,7 @@ impl<const ROWS: usize, const COLS: usize>
         self.deadline = constraint
             .deadline
             // Bring back the deadline to account for roll-up time
-            .map(|deadline| deadline - Duration::from_micros(2));
+            .map(|deadline| deadline - Duration::from_micros(1));
 
         // Search deeper loop
         loop {
@@ -161,7 +162,7 @@ impl<const ROWS: usize, const COLS: usize>
         let mut min_depth = super::max_depth::MaxDepth::Unlimited;
 
         for (state, weight) in transition.next.spawns() {
-            let eval = self.evaluate_state(&game::Swipe2048 { state })?;
+            let eval = self.evaluate_state(&game::GameState { state })?;
 
             min_depth = std::cmp::min(eval.min_depth, min_depth);
             mean_value += Weighted::new_weighted(eval.value, weight.into());

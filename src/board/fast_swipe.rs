@@ -110,7 +110,7 @@ impl SwipeResult {
 }
 
 pub fn swipe_left<const SIZE: usize>(cells: &mut [u8; SIZE]) -> bool {
-    // TODO: try this fast implementation for [swipe_right]
+    // TODO: Try this fast implementation for swipe_right.
 
     // if let [a, b, c, d] = cells[..] {
     //     let swiped_cells = swipe_left_4_fast(u32::from_le_bytes([a, b, c, d])).to_le_bytes();
@@ -188,11 +188,11 @@ pub fn swipe_left<const SIZE: usize>(cells: &mut [u8; SIZE]) -> bool {
 }
 
 pub fn swipe_right<const SIZE: usize>(cells: &mut [u8; SIZE]) -> bool {
-    // PERF: we need a custom swipe_right
+    // PERF: Reverse the implementation of swipe_left for this.
     cells.reverse();
-    let moved = swipe_left(cells);
+    let swiped = swipe_left(cells);
     cells.reverse();
-    moved
+    swiped
 }
 
 #[cfg(test)]
@@ -207,6 +207,7 @@ mod tests {
         ([0, 2, 1, 2], [2, 1, 2, 0]),
         ([0, 1, 2, 1], [1, 2, 1, 0]),
         ([0, 2, 2, 2], [3, 2, 0, 0]),
+        ([1, 0, 0, 0], [1, 0, 0, 0]),
         ([1, 0, 1, 1], [2, 1, 0, 0]),
         ([1, 0, 1, 2], [2, 2, 0, 0]),
         ([1, 1, 1, 0], [2, 1, 0, 0]),
@@ -218,23 +219,25 @@ mod tests {
         ([2, 3, 2, 2], [2, 3, 3, 0]),
     ];
 
+    fn test_for<const SIZE: usize>(
+        f: impl FnOnce(&mut [u8; SIZE]) -> bool,
+        inp: [u8; SIZE],
+        expected_out: [u8; SIZE],
+    ) {
+        let mut row = inp;
+        let changed = f(&mut row);
+        assert_eq!(row, expected_out, "input: {inp:?}");
+        assert_eq!(changed, inp != expected_out, "input: {inp:?}");
+    }
+
     #[test]
     fn test_swipe_left() {
         for (inp, expected_out) in TEST_CASES.iter().copied() {
-            let mut out = inp;
-            let _res = swipe_left(&mut out);
-            assert_eq!(out, expected_out, "input: {inp:?}");
+            test_for(swipe_left, inp, expected_out);
         }
 
-        let inp = [];
-        let mut out = inp;
-        let _res = swipe_left(&mut out);
-        assert_eq!(out, [], "input: {inp:?}");
-
-        let inp = [1];
-        let mut out = inp;
-        let _res = swipe_left(&mut out);
-        assert_eq!(out, [1], "input: {inp:?}");
+        test_for(swipe_left, [], []);
+        test_for(swipe_left, [1], [1]);
     }
 
     #[test]
@@ -244,19 +247,10 @@ mod tests {
             out.reverse();
             (inp, out)
         }) {
-            let mut out = inp;
-            let _res = swipe_right(&mut out);
-            assert_eq!(out, expected_out, "input: {inp:?}");
+            test_for(swipe_right, inp, expected_out);
         }
 
-        let inp = [];
-        let mut out = inp;
-        let _res = swipe_right(&mut out);
-        assert_eq!(out, [], "input: {inp:?}");
-
-        let inp = [1];
-        let mut out = inp;
-        let _res = swipe_right(&mut out);
-        assert_eq!(out, [1], "input: {inp:?}");
+        test_for(swipe_right, [], []);
+        test_for(swipe_right, [1], [1]);
     }
 }
