@@ -73,4 +73,10 @@ fn bench_board_swipe(c: &mut Criterion) {
     });
 }
 
-criterion_group!(board, bench_hash, bench_board_swipe);
+criterion_group!(
+    name = board;
+    config = Criterion::default()
+        .significance_level(0.01);
+
+    targets = bench_hash, bench_board_swipe
+);

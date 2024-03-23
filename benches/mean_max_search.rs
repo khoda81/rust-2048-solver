@@ -19,7 +19,7 @@ fn run_search<const COLS: usize, const ROWS: usize>(
 
 pub fn bench_search_depth(c: &mut Criterion) {
     let mut bench_search = |state: game::GameState<4, 4>, constraint: SearchConstraint| {
-        let parameter_display = format!("{constraint:?}");
+        let parameter_display = format!("{:032x}-{constraint}", state.state.as_u128());
 
         c.bench_with_input(
             BenchmarkId::new("search", parameter_display),
@@ -27,6 +27,18 @@ pub fn bench_search_depth(c: &mut Criterion) {
             run_search,
         );
     };
+
+    #[rustfmt::skip]
+    bench_search(
+        [
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 0, 0],
+        ]
+        .into(),
+        SearchConstraint::default().with_max_depth(Bound::new(3)),
+    );
 
     #[rustfmt::skip]
     bench_search(
@@ -55,6 +67,18 @@ pub fn bench_search_depth(c: &mut Criterion) {
     #[rustfmt::skip]
     bench_search(
         [
+            [1, 1, 1, 1],
+            [1, 2, 1, 1],
+            [1, 1, 2, 1],
+            [1, 1, 1, 1],
+        ]
+        .into(),
+        SearchConstraint::default().with_max_depth(Bound::new(3)),
+    );
+
+    #[rustfmt::skip]
+    bench_search(
+        [
             [ 0,  0,  0,  0],
             [11, 12, 13, 14],
             [15, 16, 17, 18],
@@ -65,4 +89,11 @@ pub fn bench_search_depth(c: &mut Criterion) {
     );
 }
 
-criterion_group!(mean_max_search, bench_search_depth);
+criterion_group!(
+    name = mean_max_search;
+    config = Criterion::default()
+        .significance_level(0.01)
+        .measurement_time(std::time::Duration::from_secs(10));
+
+    targets = bench_search_depth
+);

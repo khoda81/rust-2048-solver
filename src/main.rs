@@ -10,19 +10,21 @@ fn main() {
     let mut ai = mean_max::MeanMax::new();
 
     ai.logger.log_search_results = true;
-    // ai.logger.log_cache_info = true;
-    ai.logger.clear_screen = false;
-    // ai.logger.show_size_of_critical_structs = true;
+    ai.logger.log_cache_info = false;
+    ai.logger.clear_screen = true;
+    ai.logger.show_size_of_critical_structs = false;
 
-    let mut search_duration = Duration::from_secs_f64(0.1);
+    let auto_adjust_search_time = true;
+    let base_search_time = Duration::from_secs_f64(0.02);
+
+    let mut search_time_multiplier = 1;
 
     println!("{}", game.state);
     loop {
+        let search_duration = search_time_multiplier * base_search_time;
         let deadline = Instant::now() + search_duration;
 
-        let search_constraint = mean_max::SearchConstraint::default()
-            // .with_max_depth(mean_max::max_depth::MaxDepth::new(3))
-            .with_deadline(deadline);
+        let search_constraint = mean_max::SearchConstraint::new().with_deadline(deadline);
 
         let decision = ai.decide_until(&game, search_constraint);
 
@@ -44,15 +46,18 @@ fn main() {
             break;
         }
 
-        search_duration = match decision.eval.value as u32 {
-            0..=20 => Duration::from_secs_f64(20.0),
-            21..=50 => Duration::from_secs_f64(10.0),
-            51..=100 => Duration::from_secs_f64(5.0),
-            101..=200 => Duration::from_secs_f64(1.5),
-            201..=500 => Duration::from_secs_f64(0.5),
-            501..=1000 => Duration::from_secs_f64(0.2),
-            _ => Duration::from_secs_f64(0.1),
-        };
+        #[allow(clippy::match_overlapping_arm)]
+        if auto_adjust_search_time {
+            search_time_multiplier = match decision.eval.value as u32 {
+                ..=20 => 200,
+                ..=50 => 100,
+                ..=100 => 50,
+                ..=200 => 15,
+                ..=500 => 5,
+                ..=1000 => 2,
+                _ => 1,
+            };
+        }
     }
 
     println!("Game Over!");

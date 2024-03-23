@@ -4,7 +4,6 @@ use crate::{
     bots::{heuristic, model::weighted::Weighted},
     game,
 };
-use std::time::{Duration, Instant};
 
 pub type Action = Direction;
 pub type State<const ROWS: usize, const COLS: usize> = game::GameState<ROWS, COLS>;
@@ -49,7 +48,7 @@ impl<const ROWS: usize, const COLS: usize>
 
     pub fn evaluate_state(&mut self, state: &State<ROWS, COLS>) -> EvaluationResult {
         if let Some(deadline) = self.deadline {
-            if Instant::now() >= deadline {
+            if std::time::Instant::now() >= deadline {
                 return Err(SearchError::TimeOut);
             }
         }
@@ -99,10 +98,7 @@ impl<const ROWS: usize, const COLS: usize>
             .make_decision(state)
             .expect("searching with no constraint");
 
-        self.deadline = constraint
-            .deadline
-            // Bring back the deadline to account for roll-up time
-            .map(|deadline| deadline - Duration::from_micros(1));
+        self.deadline = constraint.deadline;
 
         // Search deeper loop
         loop {

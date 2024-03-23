@@ -120,17 +120,9 @@ impl Logger {
         self.search_log.push(search_info);
 
         if self.log_search_results {
-            println!();
+            // TODO: Use a logging library.
 
-            if let Some(deadline) = constraint.deadline {
-                let duration = utils::HumanDuration(deadline.duration_since(start_time));
-                // TODO: Use a logging library.
-                println!("Searching for {duration}");
-            }
-
-            if !constraint.max_depth.is_unlimited() {
-                println!("Until depth {}", constraint.max_depth);
-            }
+            println!("Searching {constraint}");
         }
 
         SearchID(self.search_log.len() - 1)

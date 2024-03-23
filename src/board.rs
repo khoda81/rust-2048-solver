@@ -3,6 +3,7 @@ pub mod fast_swipe;
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::seq::SliceRandom;
 use std::fmt::Write as _;
+use std::hash::Hash;
 use std::{
     array, fmt,
     ops::{Deref, DerefMut},
@@ -42,34 +43,6 @@ pub type Cell = u8;
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Cells<const COLS: usize, const ROWS: usize> {
     pub cells: [[Cell; COLS]; ROWS],
-}
-
-impl<const COLS: usize, const ROWS: usize> std::hash::Hash for Cells<COLS, ROWS> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        let cells = self.cells.flatten();
-        let chunks = cells.chunks_exact(8);
-
-        let remainder = chunks.remainder();
-
-        let mut last_chunk = [0; 8];
-        last_chunk[..remainder.len()].copy_from_slice(remainder);
-        let remainder = (!remainder.is_empty()).then_some(last_chunk.as_slice());
-
-        chunks
-            .chain(remainder)
-            .map(|chunk| {
-                // SAFETY: this is safe since using [`<[_]>::chunks_exact`] with size 8
-                unsafe { chunk.try_into().unwrap_unchecked() }
-            })
-            .map(u64::from_ne_bytes)
-            .for_each(|chunk| chunk.hash(state));
-    }
-}
-
-impl<const COLS: usize, const ROWS: usize> Default for Cells<COLS, ROWS> {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl<const COLS: usize, const ROWS: usize> Cells<COLS, ROWS> {
@@ -227,14 +200,44 @@ impl<const COLS: usize, const ROWS: usize> Cells<COLS, ROWS> {
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> fmt::Display for Cells<COLS, ROWS> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for row in self.iter() {
-            format_row(row, f)?;
-            writeln!(f)?;
+impl Cells<4, 4> {
+    pub fn as_u128(self) -> u128 {
+        // SAFETY: we know the slice is 16 bytes and has the same layout
+        let bytes = unsafe { *self.cells.as_ptr().cast::<[u8; 16]>() };
+        u128::from_le_bytes(bytes)
+    }
+}
+
+impl<const COLS: usize, const ROWS: usize> std::hash::Hash for Cells<COLS, ROWS> {
+    #[inline(never)]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        if let Some(cells) = (self as &dyn std::any::Any).downcast_ref::<Cells<4, 4>>() {
+            return cells.as_u128().hash(state);
         }
 
-        Ok(())
+        let cells = self.cells.flatten();
+        let chunks = cells.chunks_exact(8);
+
+        let remainder = chunks.remainder();
+
+        let mut last_chunk = [0; 8];
+        last_chunk[..remainder.len()].copy_from_slice(remainder);
+        let remainder = (!remainder.is_empty()).then_some(last_chunk.as_slice());
+
+        chunks
+            .chain(remainder)
+            .map(|chunk| {
+                // SAFETY: this is safe since using [`<[_]>::chunks_exact`] with size 8
+                unsafe { chunk.try_into().unwrap_unchecked() }
+            })
+            .map(u64::from_ne_bytes)
+            .for_each(|chunk| chunk.hash(state));
+    }
+}
+
+impl<const COLS: usize, const ROWS: usize> Default for Cells<COLS, ROWS> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -251,6 +254,17 @@ fn format_row(last_row: &[Cell], f: &mut fmt::Formatter<'_>) -> Result<(), fmt::
     }
 
     Ok(())
+}
+
+impl<const COLS: usize, const ROWS: usize> fmt::Display for Cells<COLS, ROWS> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for row in self.iter() {
+            format_row(row, f)?;
+            writeln!(f)?;
+        }
+
+        Ok(())
+    }
 }
 
 impl<const COLS: usize, const ROWS: usize> From<[[Cell; COLS]; ROWS]> for Cells<COLS, ROWS> {
@@ -279,6 +293,7 @@ impl<const COLS: usize, const ROWS: usize> DerefMut for Cells<COLS, ROWS> {
     }
 }
 
+// TODO: Write a macro for creating boards
 #[cfg(test)]
 mod test_board {
     use super::Cells;

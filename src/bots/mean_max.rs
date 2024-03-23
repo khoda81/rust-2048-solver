@@ -2,7 +2,10 @@ pub mod logger;
 pub mod max_depth;
 pub mod mean_max_2048;
 
-use crate::bots::model::{weighted::Weighted, AccumulationModel};
+use crate::{
+    bots::model::{weighted::Weighted, AccumulationModel},
+    utils,
+};
 use std::{fmt::Display, hash::Hash, num::NonZeroUsize, time::Instant};
 use thiserror::Error;
 
@@ -69,16 +72,14 @@ pub struct SearchConstraint {
     pub max_depth: max_depth::MaxDepth,
 }
 
-impl Default for SearchConstraint {
-    fn default() -> Self {
+impl SearchConstraint {
+    pub fn new() -> Self {
         Self {
             deadline: None,
             max_depth: max_depth::MaxDepth::Unlimited,
         }
     }
-}
 
-impl SearchConstraint {
     pub fn check_deadline(&self) -> bool {
         match self.deadline {
             Some(deadline) => Instant::now() < deadline,
@@ -100,6 +101,44 @@ impl SearchConstraint {
     pub fn with_max_depth(mut self, max_depth: max_depth::MaxDepth) -> Self {
         self.max_depth = max_depth;
         self
+    }
+}
+
+impl Default for SearchConstraint {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Display for SearchConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // up to depth 4
+        // for ever
+        // for 5 secs up to depth 3
+
+        let mut is_empty = true;
+        if let Some(deadline) = self.deadline {
+            let duration = deadline.duration_since(std::time::Instant::now());
+
+            write!(f, "for {}", utils::HumanDuration(duration))?;
+            is_empty = false;
+        }
+
+        match self.max_depth {
+            max_depth::MaxDepth::Bounded(_) => {
+                if !is_empty {
+                    f.write_str(", ")?;
+                }
+                write!(f, "{} levels deep", self.max_depth)?;
+            }
+            max_depth::MaxDepth::Unlimited => {
+                if is_empty {
+                    write!(f, "for ever")?;
+                }
+            }
+        };
+
+        Ok(())
     }
 }
 
