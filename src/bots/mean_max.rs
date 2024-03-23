@@ -60,6 +60,38 @@ impl<A: Display> Display for EvaluatedAction<A> {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
+pub enum Decision<A> {
+    Act(EvaluatedAction<A>),
+    Resign,
+}
+
+impl<A> Decision<A> {
+    pub fn eval(&self) -> Evaluation {
+        match self {
+            Decision::Act(act) => act.eval,
+            Decision::Resign => Evaluation::TERMINAL,
+        }
+    }
+
+    fn max_by_eval(self, other: Self) -> Self {
+        std::cmp::max_by(self, other, |a, b| {
+            a.eval()
+                .partial_cmp(&b.eval())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+    }
+}
+
+impl<A: Display> Display for Decision<A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Decision::Act(act) => write!(f, "{act}"),
+            Decision::Resign => write!(f, "resign"),
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum SearchError {
     #[error("search time exceeded the deadline")]

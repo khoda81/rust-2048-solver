@@ -1,10 +1,9 @@
-use super::{
-    max_depth::{self, MaxDepth},
-    mean_max_2048, Evaluation, SearchConstraint,
+use super::{max_depth::MaxDepth, mean_max_2048, Evaluation, SearchConstraint};
+use crate::{
+    bots::model::{weighted::Weighted, AccumulationModel},
+    utils,
 };
-use crate::bots::model::{weighted::Weighted, AccumulationModel};
-use crate::utils;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 pub(super) struct SearchID(usize);
 
@@ -23,6 +22,7 @@ pub struct Logger {
     // Config
     pub log_search_results: bool,
     pub log_cache_info: bool,
+    pub log_deadline_miss: bool,
     pub clear_screen: bool,
     pub show_size_of_critical_structs: bool,
 }
@@ -37,6 +37,7 @@ impl Logger {
 
             log_search_results: false,
             log_cache_info: false,
+            log_deadline_miss: false,
             clear_screen: false,
             show_size_of_critical_structs: false,
         }
@@ -68,7 +69,7 @@ impl Logger {
     pub(super) fn register_lookup_result(
         &mut self,
         result: Option<&Evaluation>,
-        depth_limit: max_depth::MaxDepth,
+        depth_limit: MaxDepth,
     ) {
         match result {
             Some(eval) => self.register_cache_hit(depth_limit, eval),
@@ -120,9 +121,7 @@ impl Logger {
         self.search_log.push(search_info);
 
         if self.log_search_results {
-            // TODO: Use a logging library.
-
-            println!("Searching {constraint}");
+            log::debug!("Searching {constraint}");
         }
 
         SearchID(self.search_log.len() - 1)
@@ -134,18 +133,12 @@ impl Logger {
         decision: &mean_max_2048::Decision,
     ) {
         if self.log_search_results {
-            if let Some(result) = decision {
-                print!("{result:.2}");
-            } else {
-                print!("terminate");
-            }
-
             if let Some(search_info) = self.search_log.get(search_index) {
                 let duration = utils::HumanDuration(search_info.start_time.elapsed());
-                print!(" in {duration:>5}");
+                log::debug!("{decision:.2} in {duration:>5}");
+            } else {
+                log::debug!("{decision:.2}");
             }
-
-            println!()
         }
     }
 
@@ -175,6 +168,10 @@ impl Logger {
             println!("{:.4}", self.cache_hit_depth_model);
         }
 
+        if !self.log_deadline_miss {
+            return;
+        }
+
         let deadline = match search_info.constraint.deadline {
             Some(deadline) => deadline,
             _ => return,
@@ -186,19 +183,19 @@ impl Logger {
             -(deadline - end_time).as_secs_f64()
         };
 
-        let avg_miss_seconds = self.deadline_miss_model.weighted_average();
-        let miss_err = (avg_miss_seconds - miss_seconds).abs();
-        let outlier_threshold = Duration::from_micros(5);
-        if miss_err.is_nan() || Duration::from_secs_f64(miss_err) <= outlier_threshold {
-            self.deadline_miss_model += Weighted::new(miss_seconds);
-        } else {
-            // FIX: This can be thrown off if a high miss happens at the start.
-            // TODO: Loop over all the searches every time.
-            eprintln!(
-                "Ignoring miss since it has a high error ({miss_duration:.1?}>{outlier_threshold:.1?})",
-                miss_duration = Duration::from_secs_f64(miss_err),
-            );
-        }
+        // BUG: Disabling outlier detection for now
+        // let avg_miss_seconds = self.deadline_miss_model.weighted_average();
+        // let miss_err = (avg_miss_seconds - miss_seconds).abs();
+        // let outlier_threshold = Duration::from_micros(5);
+        // FIX: This can be thrown off if a high miss happens at the start.
+        // if miss_err.is_nan() || Duration::from_secs_f64(miss_err) <= outlier_threshold {
+        self.deadline_miss_model += Weighted::new(miss_seconds);
+        // } else {
+        //     eprintln!(
+        //         "Ignoring miss since it has a high error ({miss_duration:.1?}>{outlier_threshold:.1?})",
+        //         miss_duration = Duration::from_secs_f64(miss_err),
+        //     );
+        // }
 
         let miss_duration = utils::get_signed_duration(miss_seconds);
         println!("Deadline missed by {miss_duration:?}");

@@ -13,7 +13,7 @@ pub type Transition<const ROWS: usize, const COLS: usize> =
 
 pub type OptionEvaluation = Option<Evaluation>;
 pub type EvaluationResult = Result<Evaluation, SearchError>;
-pub type Decision = Option<EvaluatedAction<Action>>;
+pub type Decision = super::Decision<Action>;
 pub type DecisionResult = Result<Decision, SearchError>;
 
 impl<const ROWS: usize, const COLS: usize>
@@ -53,27 +53,23 @@ impl<const ROWS: usize, const COLS: usize>
             }
         }
 
-        let eval = self
-            .make_decision(state)?
-            .map_or(Evaluation::TERMINAL, |e| e.eval);
+        let eval = self.make_decision(state)?.eval();
 
         Ok(eval)
     }
 
     pub fn make_decision(&mut self, state: &State<ROWS, COLS>) -> DecisionResult {
         // TODO: Make this iterative instead of recursive.
-        let mut best: Decision = None;
+        state
+            .transitions()
+            .try_fold(Decision::Resign, |best_decision, transition| {
+                let decision = Decision::Act(EvaluatedAction {
+                    eval: self.evaluate_transition(transition)?,
+                    action: transition.action,
+                });
 
-        for transition in state.transitions() {
-            let eval = self.evaluate_transition(transition)?;
-            let action = transition.action;
-
-            if !best.is_some_and(|best: _| best.eval > eval) {
-                best = Some(EvaluatedAction { eval, action });
-            }
-        }
-
-        Ok(best)
+                Ok(best_decision.max_by_eval(decision))
+            })
     }
 
     pub fn decide_until(
@@ -101,10 +97,13 @@ impl<const ROWS: usize, const COLS: usize>
         self.deadline = constraint.deadline;
 
         // Search deeper loop
+        // NOTE: this can be done concurrently
         loop {
             self.logger.register_search_result(&search_id, &decision);
 
-            let Some(last_decision) = decision else { break };
+            let Decision::Act(last_decision) = decision else {
+                break;
+            };
 
             // Reached the max_depth, quit
             if last_decision.eval.min_depth >= constraint.max_depth {
@@ -141,18 +140,22 @@ impl<const ROWS: usize, const COLS: usize>
     }
 
     fn evaluate_transition(&mut self, transition: Transition<ROWS, COLS>) -> EvaluationResult {
-        let Some(eval_depth_limit) = self.depth_limit - 1 else {
-            return Ok(Evaluation {
-                value: self.evaluate_with_model(&transition),
-                min_depth: super::max_depth::MaxDepth::new(0),
-            });
-        };
-
         if let Some(eval) = self.cached_evaluation(&transition) {
             return Ok(eval);
         }
 
-        self.depth_limit = eval_depth_limit;
+        // Decrease depth limit for the recursive call
+        self.depth_limit = match self.depth_limit - 1 {
+            Some(depth_limit) => depth_limit,
+            None => {
+                let evaluation = Evaluation {
+                    value: self.evaluate_with_model(&transition),
+                    min_depth: super::max_depth::MaxDepth::new(0),
+                };
+
+                return Ok(evaluation);
+            }
+        };
 
         let mut mean_value = Weighted::<_, Value>::default();
         let mut min_depth = super::max_depth::MaxDepth::Unlimited;
