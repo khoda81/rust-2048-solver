@@ -3,7 +3,7 @@ pub mod max_depth;
 pub mod mean_max_2048;
 
 use crate::{
-    bots::model::{weighted::Weighted, AccumulationModel},
+    bots::model::{weighted::Weighted, Accumulator},
     utils,
 };
 use std::{fmt::Display, hash::Hash, num::NonZeroUsize, time::Instant};
@@ -144,10 +144,6 @@ impl Default for SearchConstraint {
 
 impl Display for SearchConstraint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // up to depth 4
-        // for ever
-        // for 5 secs up to depth 3
-
         let mut is_empty = true;
         if let Some(deadline) = self.deadline {
             let duration = deadline.duration_since(std::time::Instant::now());
@@ -179,7 +175,7 @@ pub struct MeanMax<State, P> {
     pub deadline: Option<Instant>,
     pub depth_limit: max_depth::MaxDepth,
     pub evaluation_cache: lru::LruCache<State, Evaluation>,
-    pub model: AccumulationModel<P, Weighted<f64>>,
+    pub model: Accumulator<P, Weighted<f64>>,
     pub logger: logger::Logger,
 }
 
@@ -201,7 +197,7 @@ impl<S: Hash + Eq, P> MeanMax<S, P> {
             evaluation_cache: lru::LruCache::new(capacity),
             deadline: None,
             depth_limit: max_depth::MaxDepth::Unlimited,
-            model: AccumulationModel::new(),
+            model: Accumulator::new(),
             logger: logger::Logger::new(),
         }
     }

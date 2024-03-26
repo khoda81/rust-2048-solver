@@ -1,11 +1,11 @@
 use super::{max_depth::MaxDepth, mean_max_2048, Evaluation, SearchConstraint};
 use crate::{
-    bots::model::{weighted::Weighted, AccumulationModel},
+    bots::model::{weighted::Weighted, Accumulator},
     utils,
 };
 use std::time::Instant;
 
-pub(super) struct SearchID(usize);
+pub(super) struct SearchHandle(usize);
 
 pub struct SearchInfo {
     pub constraint: SearchConstraint,
@@ -14,8 +14,8 @@ pub struct SearchInfo {
 }
 
 pub struct Logger {
-    pub cache_hit_chance_model: AccumulationModel<MaxDepth, Weighted>,
-    pub cache_hit_depth_model: AccumulationModel<MaxDepth, Weighted>,
+    pub cache_hit_chance_model: Accumulator<MaxDepth, Weighted>,
+    pub cache_hit_depth_model: Accumulator<MaxDepth, Weighted>,
     pub deadline_miss_model: Weighted,
     pub search_log: Vec<SearchInfo>,
 
@@ -24,14 +24,14 @@ pub struct Logger {
     pub log_cache_info: bool,
     pub log_deadline_miss: bool,
     pub clear_screen: bool,
-    pub show_size_of_critical_structs: bool,
+    pub print_size_of_critical_structs: bool,
 }
 
 impl Logger {
     pub(super) fn new() -> Self {
         Logger {
-            cache_hit_chance_model: AccumulationModel::new(),
-            cache_hit_depth_model: AccumulationModel::new(),
+            cache_hit_chance_model: Accumulator::new(),
+            cache_hit_depth_model: Accumulator::new(),
             deadline_miss_model: Weighted::default(),
             search_log: Vec::new(),
 
@@ -39,7 +39,7 @@ impl Logger {
             log_cache_info: false,
             log_deadline_miss: false,
             clear_screen: false,
-            show_size_of_critical_structs: false,
+            print_size_of_critical_structs: false,
         }
     }
 
@@ -77,22 +77,18 @@ impl Logger {
         }
     }
 
-    pub(super) fn register_search_start<T>(
-        &mut self,
-        _state: &T,
-        constraint: SearchConstraint,
-    ) -> SearchID {
+    pub(super) fn start_search<S>(&mut self, _s: &S, constraint: SearchConstraint) -> SearchHandle {
         let start_time = Instant::now();
 
         #[allow(non_snake_case)]
-        if self.show_size_of_critical_structs {
-            let State = std::mem::size_of_val(_state);
+        if self.print_size_of_critical_structs {
+            let State = std::mem::size_of_val(_s);
             dbg!(State);
             let Action = std::mem::size_of::<mean_max_2048::Action>();
             dbg!(Action);
 
             let Transition = std::mem::size_of::<
-                crate::game::Transition<T, mean_max_2048::Action, super::Value>,
+                crate::game::Transition<S, mean_max_2048::Action, super::Value>,
             >();
             dbg!(Transition);
 
@@ -109,7 +105,7 @@ impl Logger {
             let DeciRst = std::mem::size_of::<mean_max_2048::DecisionResult>();
             dbg!(DeciRst);
 
-            self.show_size_of_critical_structs = false;
+            self.print_size_of_critical_structs = false;
         }
 
         let search_info = SearchInfo {
@@ -124,17 +120,18 @@ impl Logger {
             log::debug!("Searching {constraint}");
         }
 
-        SearchID(self.search_log.len() - 1)
+        SearchHandle(self.search_log.len() - 1)
     }
 
     pub(super) fn register_search_result(
         &mut self,
-        &SearchID(search_index): &SearchID,
+        &SearchHandle(search_id): &SearchHandle,
         decision: &mean_max_2048::Decision,
     ) {
         if self.log_search_results {
-            if let Some(search_info) = self.search_log.get(search_index) {
+            if let Some(search_info) = self.search_log.get(search_id) {
                 let duration = utils::HumanDuration(search_info.start_time.elapsed());
+                // TODO: Print time since previous
                 log::debug!("{decision:.2} in {duration:>5}");
             } else {
                 log::debug!("{decision:.2}");
@@ -142,7 +139,7 @@ impl Logger {
         }
     }
 
-    pub(super) fn register_search_end(&mut self, SearchID(search_index): SearchID) {
+    pub(super) fn end_search(&mut self, SearchHandle(search_id): SearchHandle) {
         let end_time = Instant::now();
 
         if self.log_search_results {
@@ -153,7 +150,7 @@ impl Logger {
             print!("\x1b[2J\x1b[H");
         }
 
-        let search_info = match self.search_log.get_mut(search_index) {
+        let search_info = match self.search_log.get_mut(search_id) {
             Some(search_info) => search_info,
             None => return,
         };
@@ -187,7 +184,7 @@ impl Logger {
         // let avg_miss_seconds = self.deadline_miss_model.weighted_average();
         // let miss_err = (avg_miss_seconds - miss_seconds).abs();
         // let outlier_threshold = Duration::from_micros(5);
-        // FIX: This can be thrown off if a high miss happens at the start.
+        // BUG: This can be thrown off if a high miss happens at the start.
         // if miss_err.is_nan() || Duration::from_secs_f64(miss_err) <= outlier_threshold {
         self.deadline_miss_model += Weighted::new(miss_seconds);
         // } else {

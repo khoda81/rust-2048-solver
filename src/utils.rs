@@ -1,14 +1,14 @@
 use std::{
     cmp,
     collections::HashMap,
-    fmt::{self, Debug, Display, Write},
+    fmt::{self, Debug, Display, Write as _},
     hash::Hash,
     time::Duration,
 };
 
 use itertools::Itertools;
 
-use crate::bots::{heuristic, mean_max::MeanMax, model::AccumulationModel};
+use crate::bots::{heuristic, mean_max::MeanMax, model::Accumulator};
 
 /// Iterator is the lexicographic maximum of all the iterators added to it.
 ///
@@ -86,7 +86,7 @@ where
     println!("Evaluation cache is {fill_percent:.2?}% filled",);
 }
 
-pub fn print_model<K: Debug + Ord, V: Display>(model: &AccumulationModel<K, V>) {
+pub fn print_model<K: Debug + Ord, V: Display>(model: &Accumulator<K, V>) {
     model
         .memory
         .iter()
@@ -94,25 +94,26 @@ pub fn print_model<K: Debug + Ord, V: Display>(model: &AccumulationModel<K, V>) 
         .for_each(|(key, value)| println!("{key:2?}: {value}"));
 }
 
-pub fn print_lookup<S>(ai: &MeanMax<S, heuristic::PreprocessedBoard>) {
-    let mut new_lookup = heuristic::get_lookup().clone();
-
-    for (key, eval) in ai.model.memory.iter() {
-        new_lookup.insert(*key, eval.weighted_average());
-    }
-
-    show_map(&new_lookup);
-}
-
-pub fn show_map<V: Debug>(map: &HashMap<heuristic::PreprocessedBoard, V>) {
-    for (key, value) in map
-        .iter()
-        .sorted_by_key(|(&(empty, max), _eval)| (max, empty))
-    {
-        println!("map.insert({key:2?}, {value:?});");
-        // println!("data[{key:?}] = {value}");
-    }
-}
+// TODO: make these generic
+// pub fn print_lookup<S>(ai: &MeanMax<S, heuristic::PreprocessedBoard>) {
+//     let mut new_lookup = heuristic::get_lookup().clone();
+//
+//     for (key, eval) in ai.model.memory.iter() {
+//         new_lookup.insert(*key, eval.weighted_average());
+//     }
+//
+//     show_map(&new_lookup);
+// }
+//
+// pub fn show_map<V: Debug>(map: &HashMap<heuristic::PreprocessedBoard, V>) {
+//     for (key, value) in map
+//         .iter()
+//         .sorted_by_key(|(&(empty, max, ordered), _eval)| (max, empty, ordered))
+//     {
+//         println!("map.insert({key:2?}, {value:?});");
+//         // println!("data[{key:?}] = {value}");
+//     }
+// }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Signed<T> {
@@ -163,6 +164,9 @@ pub struct HumanDuration(pub Duration);
 
 impl Display for HumanDuration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // TODO: Change to 3 digit precision.
+        // TODO: Make precision configurable?
+
         let duration = self.0;
         let seconds = duration.as_secs();
         let nanos = duration.as_nanos();

@@ -17,31 +17,36 @@ pub type Decision = super::Decision<Action>;
 pub type DecisionResult = Result<Decision, SearchError>;
 
 impl<const ROWS: usize, const COLS: usize>
-    MeanMax<Cells<ROWS, COLS>, heuristic::PreprocessedBoard>
+    MeanMax<Cells<ROWS, COLS>, heuristic::PreprocessedBoard<ROWS, COLS>>
 {
     fn train_model(&mut self, state: &Cells<ROWS, COLS>, eval: Evaluation) {
+        // FIX: temporarily disabling model train
         let preprocessed_board = heuristic::preprocess_board(state);
-        let prev_eval = self.model.entry(preprocessed_board).or_default();
 
+        // TODO: This should be a model config?
         let decay = 0.995;
-        prev_eval.total_value *= decay;
-        prev_eval.total_weight *= decay;
 
         // TODO: Find a better way to weigh samples.
-
-        // let weight = 2.0_f64.powi(eval.depth.into()) as heuristic::Eval;
         let weight = 1.0;
-        *prev_eval += Weighted::new_weighted(eval.value as f64, weight);
+        // let weight = 2.0_f64.powi(eval.depth.into()) as heuristic::Eval;
+
+        // let sample = Weighted::new_weighted(eval.value as f64, weight);
+        // prev_eval.total_value *= decay;
+        // prev_eval.total_weight *= decay;
+        //
+        // self.model.add_to(preprocessed_board, sample)
     }
 
     fn evaluate_with_model(&self, transition: &Transition<ROWS, COLS>) -> Value {
         // Preprocess the board for the model
         let preprocessed = heuristic::preprocess_board(&transition.next);
 
-        let next_state_eval = match self.model.get(&preprocessed) {
-            Some(eval) => eval.weighted_average(),
-            None => heuristic::heuristic(preprocessed),
-        };
+        // FIX: temporarily disabling model train
+        let next_state_eval = heuristic::heuristic(preprocessed);
+        // let next_state_eval = match self.model.get(&preprocessed) {
+        //     Some(eval) => eval.weighted_average(),
+        //     None => heuristic::heuristic(preprocessed),
+        // };
 
         next_state_eval as Value + transition.reward
     }
@@ -77,7 +82,7 @@ impl<const ROWS: usize, const COLS: usize>
         state: &State<ROWS, COLS>,
         constraint: SearchConstraint,
     ) -> Decision {
-        let search_id = self.logger.register_search_start(state, constraint);
+        let search_handle = self.logger.start_search(state, constraint);
 
         // Initial search depth
         self.depth_limit = match constraint.deadline {
@@ -99,7 +104,8 @@ impl<const ROWS: usize, const COLS: usize>
         // Search deeper loop
         // NOTE: this can be done concurrently
         loop {
-            self.logger.register_search_result(&search_id, &decision);
+            self.logger
+                .register_search_result(&search_handle, &decision);
 
             let Decision::Act(last_decision) = decision else {
                 break;
@@ -118,7 +124,7 @@ impl<const ROWS: usize, const COLS: usize>
             decision = new_decision;
         }
 
-        self.logger.register_search_end(search_id);
+        self.logger.end_search(search_handle);
         decision
     }
 
@@ -160,7 +166,7 @@ impl<const ROWS: usize, const COLS: usize>
         let mut mean_value = Weighted::<_, Value>::default();
         let mut min_depth = super::max_depth::MaxDepth::Unlimited;
 
-        for (state, weight) in transition.next.spawns() {
+        for (state, weight) in transition.next.into_spawns() {
             let eval = self.evaluate_state(&game::GameState { state })?;
 
             min_depth = std::cmp::min(eval.min_depth, min_depth);

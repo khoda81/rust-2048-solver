@@ -34,6 +34,7 @@ impl<const ROWS: usize, const COLS: usize> GameState<ROWS, COLS> {
         (!self.terminal()).then_some(reward)
     }
 
+    // TODO: Add a method that return an iterator of potential future states (with respective weights), then deprecate this.
     pub fn half_step(
         self,
         action: Action,

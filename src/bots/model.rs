@@ -5,7 +5,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::{Display, Write},
     hash,
-    ops::{AddAssign, Deref, DerefMut},
+    ops::AddAssign,
 };
 
 use itertools::Itertools;
@@ -15,17 +15,17 @@ pub mod prioritized;
 pub mod weighted;
 
 #[derive(Clone, Debug)]
-pub struct AccumulationModel<K, V> {
+pub struct Accumulator<K, V> {
     pub memory: HashMap<K, V>,
 }
 
-impl<K, V> Default for AccumulationModel<K, V> {
+impl<K, V> Default for Accumulator<K, V> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<K, V> AccumulationModel<K, V> {
+impl<K, V> Accumulator<K, V> {
     pub fn new() -> Self {
         Self {
             // PERF: Replace this with Vec binary search.
@@ -34,13 +34,13 @@ impl<K, V> AccumulationModel<K, V> {
     }
 }
 
-impl<K, V> AccumulationModel<K, V>
+impl<K, V> Accumulator<K, V>
 where
     K: hash::Hash + cmp::Eq,
     V: AddAssign,
 {
     pub fn add_to(&mut self, key: K, value: V) {
-        match self.entry(key) {
+        match self.memory.entry(key) {
             Entry::Occupied(mut occupied_entry) => occupied_entry.get_mut().add_assign(value),
             Entry::Vacant(vacant_entry) => {
                 vacant_entry.insert(value);
@@ -49,9 +49,10 @@ where
     }
 }
 
-impl<K: Display + std::cmp::Ord, V: Display> Display for AccumulationModel<K, V> {
+impl<K: Display + std::cmp::Ord, V: Display> Display for Accumulator<K, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.iter()
+        self.memory
+            .iter()
             .sorted_by(|(k1, _), (k2, _)| k1.cmp(k2))
             .try_for_each(|(key, value)| {
                 key.fmt(f)?;
@@ -59,19 +60,5 @@ impl<K: Display + std::cmp::Ord, V: Display> Display for AccumulationModel<K, V>
                 value.fmt(f)?;
                 f.write_char('\n')
             })
-    }
-}
-
-impl<K, V> Deref for AccumulationModel<K, V> {
-    type Target = HashMap<K, V>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.memory
-    }
-}
-
-impl<K, V> DerefMut for AccumulationModel<K, V> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.memory
     }
 }

@@ -25,7 +25,7 @@ fn generate_states(count: usize) -> Vec<State> {
         let game = game::GameState::from(state);
         let iter = game
             .transitions()
-            .flat_map(|transition| transition.next.spawns())
+            .flat_map(|transition| transition.next.into_spawns())
             .map(|(new_state, _)| new_state);
 
         states.extend(iter);

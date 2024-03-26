@@ -55,13 +55,7 @@ impl<const COLS: usize, const ROWS: usize> Cells<COLS, ROWS> {
         self.into_iter().flatten().filter(|&c| c == 0).count()
     }
 
-    pub fn spawns(&self) -> impl Iterator<Item = (Self, Weight)> {
-        self.into_spawns()
-    }
-
-    #[deprecated]
     pub fn into_spawns(self) -> impl Iterator<Item = (Self, Weight)> {
-        // PERF: We should be able to represent the state of this iterator using a single 128 bit mask
         self.into_iter()
             .enumerate()
             .flat_map(|(i, row)| {
@@ -76,6 +70,9 @@ impl<const COLS: usize, const ROWS: usize> Cells<COLS, ROWS> {
                     (new_board, weight)
                 })
             })
+
+        // PERF: We should be able to represent the state of this iterator using a single 128 bit mask
+        // Spawns::new(self)
     }
 
     pub fn iter_spawns_random(self) -> impl Iterator<Item = (Self, Weight)> {
@@ -97,9 +94,10 @@ impl<const COLS: usize, const ROWS: usize> Cells<COLS, ROWS> {
         })
     }
 
+    #[must_use]
     pub fn random_spawn(&self) -> Self {
         // PERF: Don't generate all the possible states beforehand
-        let options: Vec<_> = self.spawns().collect();
+        let options: Vec<_> = self.into_spawns().collect();
         let weights = options.iter().map(|(_board, weight)| weight);
         let dist = WeightedIndex::new(weights).unwrap();
         let mut rng = rand::thread_rng();
@@ -211,7 +209,7 @@ impl Cells<4, 4> {
 impl<const COLS: usize, const ROWS: usize> std::hash::Hash for Cells<COLS, ROWS> {
     #[inline(never)]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        if let Some(cells) = (self as &dyn std::any::Any).downcast_ref::<Cells<4, 4>>() {
+        if let Some(cells) = <dyn std::any::Any>::downcast_ref::<Cells<4, 4>>(self) {
             return cells.as_u128().hash(state);
         }
 
@@ -290,6 +288,28 @@ impl<const COLS: usize, const ROWS: usize> Deref for Cells<COLS, ROWS> {
 impl<const COLS: usize, const ROWS: usize> DerefMut for Cells<COLS, ROWS> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.cells
+    }
+}
+
+#[derive(Debug)]
+pub struct Spawns<const COLS: usize, const ROWS: usize> {
+    cells: Cells<COLS, ROWS>,
+    state: [[u8; COLS]; ROWS],
+}
+
+impl<const COLS: usize, const ROWS: usize> Spawns<COLS, ROWS> {
+    pub fn new(cells: Cells<COLS, ROWS>) -> Spawns<COLS, ROWS> {
+        let mut state = [[0; COLS]; ROWS];
+        state[0][0] = 2;
+        Spawns { cells, state }
+    }
+}
+
+impl<const COLS: usize, const ROWS: usize> Iterator for Spawns<COLS, ROWS> {
+    type Item = (Cells<COLS, ROWS>, Weight);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        todo!()
     }
 }
 

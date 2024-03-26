@@ -22,22 +22,24 @@ fn main() {
         return measure_performance();
     }
 
-    let mut game = game::GameState::<4, 4>::create();
     let mut ai = MeanMax::new();
 
     ai.logger.log_search_results = true;
     ai.logger.log_cache_info = false;
     ai.logger.log_deadline_miss = true;
     ai.logger.clear_screen = true;
-    ai.logger.show_size_of_critical_structs = false;
+    ai.logger.print_size_of_critical_structs = false;
 
-    let auto_adjust_search_time = true;
+    let auto_adjust_search_time = false;
     let base_search_time = Duration::from_secs_f64(0.02);
 
     let mut search_time_multiplier = 1;
 
-    rust_2048_solver::init_screen();
+    if ai.logger.clear_screen {
+        rust_2048_solver::init_screen();
+    }
 
+    let mut game = game::GameState::<4, 4>::create();
     println!("{}", game.state);
     loop {
         let search_duration = search_time_multiplier * base_search_time;
@@ -83,7 +85,10 @@ fn main() {
         }
     }
 
-    rust_2048_solver::end_screen();
+    if ai.logger.clear_screen {
+        rust_2048_solver::end_screen();
+    }
+
     println!("{}", game.state);
     println!("Game Over!");
     // utils::print_lookup(&ai);
