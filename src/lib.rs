@@ -48,7 +48,7 @@ pub fn measure_performance() -> f32 {
     use game::twenty_forty_eight::TwentyFortyEight;
     use std::time;
 
-    let mut game = TwentyFortyEight::<4, 4>::create();
+    let mut game = TwentyFortyEight::<4, 4>::new();
     let mut ai = MeanMax::new();
     let search_time = time::Duration::from_secs_f64(0.001);
 

@@ -40,7 +40,7 @@ fn main() {
         rust_2048_solver::init_screen();
     }
 
-    let mut game = TwentyFortyEight::<4, 4>::create();
+    let mut game = TwentyFortyEight::<4, 4>::new();
     println!("{}", game.state);
     loop {
         let search_duration = search_time_multiplier * base_search_time;
