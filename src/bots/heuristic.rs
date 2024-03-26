@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use lazy_static::lazy_static;
 
-use crate::board::{Cell, Cells};
+use crate::game::twenty_forty_eight::board::{Cell, Cells};
 
 #[derive(Copy, Clone, Debug, Hash, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EmptyCount(pub u8);

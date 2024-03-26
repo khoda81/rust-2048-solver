@@ -1,8 +1,8 @@
 use super::{EvaluatedAction, Evaluation, MeanMax, SearchConstraint, SearchError, Value};
 use crate::{
-    board::{Cells, Direction},
     bots::{heuristic, model::weighted::Weighted},
     game,
+    game::twenty_forty_eight::board::{Cells, Direction},
 };
 
 pub type Action = Direction;

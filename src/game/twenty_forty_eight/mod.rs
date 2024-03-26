@@ -1,8 +1,10 @@
 type Reward = f32;
 type Action = Direction;
 
+pub mod board;
+
 use super::Transition;
-use crate::board::{Cells, Direction};
+use board::{Cells, Direction};
 use std::fmt::{self, Display};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
