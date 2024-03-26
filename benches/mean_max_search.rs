@@ -6,7 +6,10 @@ use rust_2048_solver::{
 
 fn run_search<const COLS: usize, const ROWS: usize>(
     b: &mut Bencher,
-    input: &(game::GameState<COLS, ROWS>, SearchConstraint),
+    input: &(
+        game::modname::TwentyFortyEight<COLS, ROWS>,
+        SearchConstraint,
+    ),
 ) {
     let &(ref state, search_constraint) = input;
 
@@ -18,7 +21,7 @@ fn run_search<const COLS: usize, const ROWS: usize>(
 }
 
 pub fn bench_search_depth(c: &mut Criterion) {
-    let mut bench_search = |state: game::GameState<4, 4>, constraint: SearchConstraint| {
+    let mut bench_search = |state: game::TwentyFortyEight<4, 4>, constraint: SearchConstraint| {
         let parameter_display = format!("{:032x}-{constraint}", state.state.as_u128());
 
         c.bench_with_input(

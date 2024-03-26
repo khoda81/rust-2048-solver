@@ -6,7 +6,8 @@ use crate::{
 };
 
 pub type Action = Direction;
-pub type State<const ROWS: usize, const COLS: usize> = game::GameState<ROWS, COLS>;
+pub type State<const ROWS: usize, const COLS: usize> =
+    game::twenty_forty_eight::TwentyFortyEight<ROWS, COLS>;
 
 pub type Transition<const ROWS: usize, const COLS: usize> =
     game::Transition<Action, Value, Cells<ROWS, COLS>>;
@@ -167,7 +168,9 @@ impl<const ROWS: usize, const COLS: usize>
         let mut min_depth = super::max_depth::MaxDepth::Unlimited;
 
         for (state, weight) in transition.next.into_spawns() {
-            let eval = self.evaluate_state(&game::GameState { state })?;
+            let eval = self.evaluate_state(
+                &game::twenty_forty_eight::TwentyFortyEight::from_state(state),
+            )?;
 
             min_depth = std::cmp::min(eval.min_depth, min_depth);
             mean_value += Weighted::new_weighted(eval.value, weight.into());

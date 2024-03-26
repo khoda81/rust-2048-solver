@@ -22,7 +22,7 @@ fn generate_states(count: usize) -> Vec<State> {
     let mut rng = rand::thread_rng();
     while states.len() < count {
         let state = *states.choose(&mut rng).unwrap();
-        let game = game::GameState::from(state);
+        let game = game::TwentyFortyEight::from(state);
         let iter = game
             .transitions()
             .flat_map(|transition| transition.next.into_spawns())

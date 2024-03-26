@@ -1,6 +1,7 @@
 use rust_2048_solver::{
     bots::mean_max::{Decision, MeanMax, SearchConstraint},
-    game, utils,
+    game::twenty_forty_eight::TwentyFortyEight,
+    utils,
 };
 use std::{
     io::Write,
@@ -39,7 +40,7 @@ fn main() {
         rust_2048_solver::init_screen();
     }
 
-    let mut game = game::GameState::<4, 4>::create();
+    let mut game = TwentyFortyEight::<4, 4>::create();
     println!("{}", game.state);
     loop {
         let search_duration = search_time_multiplier * base_search_time;
@@ -63,7 +64,7 @@ fn main() {
 
         log::info!("Action: {action}", action = act.action);
 
-        let reward = game.full_step(act.action);
+        let reward = game.step(act.action);
         println!("{}", game.state);
 
         if reward.is_none() {

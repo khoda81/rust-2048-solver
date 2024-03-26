@@ -45,9 +45,10 @@ pub fn end_screen() {
 
 pub fn measure_performance() -> f32 {
     use bots::mean_max::{Decision, MeanMax, SearchConstraint};
+    use game::twenty_forty_eight::TwentyFortyEight;
     use std::time;
 
-    let mut game = game::GameState::<4, 4>::create();
+    let mut game = TwentyFortyEight::<4, 4>::create();
     let mut ai = MeanMax::new();
     let search_time = time::Duration::from_secs_f64(0.001);
 
@@ -67,7 +68,7 @@ pub fn measure_performance() -> f32 {
             }
         };
 
-        if let Some(reward) = game.full_step(act.action) {
+        if let Some(reward) = game.step(act.action) {
             total_reward += reward;
         } else {
             // The game has ended

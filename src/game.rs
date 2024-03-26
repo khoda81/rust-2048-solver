@@ -1,7 +1,3 @@
-use std::fmt::{self, Display};
-
-use crate::board::{self, Cells, Direction};
-
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Transition<Action, Reward, State> {
     pub action: Action,
@@ -9,85 +5,78 @@ pub struct Transition<Action, Reward, State> {
     pub next: State,
 }
 
-type Reward = f32;
-type Action = Direction;
+pub mod twenty_forty_eight {
+    type Reward = f32;
+    type Action = Direction;
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct GameState<const COLS: usize, const ROWS: usize> {
-    pub state: Cells<COLS, ROWS>,
-}
+    use super::Transition;
+    use crate::board::{Cells, Direction};
+    use std::fmt::{self, Display};
 
-impl<const ROWS: usize, const COLS: usize> GameState<ROWS, COLS> {
-    const ACTIONS: &'static [Action] = Action::ALL;
+    #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+    pub struct TwentyFortyEight<const COLS: usize, const ROWS: usize> {
+        pub state: Cells<COLS, ROWS>,
+    }
 
-    pub fn create() -> Self {
-        GameState {
-            state: Cells::new().random_spawn(),
+    impl<const ROWS: usize, const COLS: usize> TwentyFortyEight<ROWS, COLS> {
+        pub(crate) const ACTIONS: &'static [Action] = Action::ALL;
+
+        pub fn create() -> Self {
+            let state = Cells::new().random_spawn();
+            Self::from_state(state)
+        }
+
+        pub fn from_state(state: Cells<ROWS, COLS>) -> Self {
+            TwentyFortyEight { state }
+        }
+
+        pub fn step(&mut self, action: Action) -> Option<Reward> {
+            let Transition { reward, next, .. } = self.half_step(action)?;
+
+            self.state = next.random_spawn();
+
+            (!self.terminal()).then_some(reward)
+        }
+
+        // TODO: Add a method that return an iterator of potential future states (with respective weights), then deprecate this.
+        pub fn half_step(
+            self,
+            action: Action,
+        ) -> Option<Transition<Action, Reward, Cells<ROWS, COLS>>> {
+            let mut state = self.state;
+            if !state.swipe(action) {
+                return None;
+            }
+
+            // TODO: Replace with the actual reward.
+            let reward = 1.0;
+
+            Some(Transition {
+                action,
+                reward,
+                next: state,
+            })
+        }
+
+        pub fn terminal(&self) -> bool {
+            self.state.is_lost()
+        }
+
+        pub fn transitions(
+            &self,
+        ) -> impl Iterator<Item = Transition<Action, Reward, Cells<ROWS, COLS>>> + '_ {
+            let possible_actions = (!self.terminal())
+                .then_some(Self::ACTIONS)
+                .into_iter()
+                .flatten();
+
+            possible_actions.filter_map(|action| self.half_step(*action))
         }
     }
 
-    pub fn full_step(&mut self, action: Action) -> Option<Reward> {
-        let Transition { reward, next, .. } = self.half_step(action)?;
-
-        self.state = next.random_spawn();
-
-        (!self.terminal()).then_some(reward)
-    }
-
-    // TODO: Add a method that return an iterator of potential future states (with respective weights), then deprecate this.
-    pub fn half_step(
-        self,
-        action: Action,
-    ) -> Option<Transition<Action, Reward, Cells<ROWS, COLS>>> {
-        let mut state = self.state;
-        if !state.swipe(action) {
-            return None;
+    impl<const ROWS: usize, const COLS: usize> Display for TwentyFortyEight<ROWS, COLS> {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            self.state.fmt(f)
         }
-
-        // TODO: Replace with the actual reward.
-        let reward = 1.0;
-
-        Some(Transition {
-            action,
-            reward,
-            next: state,
-        })
-    }
-
-    pub fn terminal(&self) -> bool {
-        self.state.is_lost()
-    }
-
-    pub fn transitions(
-        &self,
-    ) -> impl Iterator<Item = Transition<Action, Reward, Cells<ROWS, COLS>>> + '_ {
-        let possible_actions = (!self.terminal())
-            .then_some(Self::ACTIONS)
-            .into_iter()
-            .flatten();
-
-        possible_actions.filter_map(|action| self.half_step(*action))
-    }
-}
-
-impl<const ROWS: usize, const COLS: usize> Display for GameState<ROWS, COLS> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.state.fmt(f)
-    }
-}
-
-impl<const ROWS: usize, const COLS: usize> From<[[board::Cell; COLS]; ROWS]>
-    for GameState<COLS, ROWS>
-{
-    fn from(cells: [[board::Cell; COLS]; ROWS]) -> Self {
-        GameState {
-            state: cells.into(),
-        }
-    }
-}
-
-impl<const ROWS: usize, const COLS: usize> From<Cells<COLS, ROWS>> for GameState<COLS, ROWS> {
-    fn from(state: Cells<COLS, ROWS>) -> Self {
-        Self { state }
     }
 }
