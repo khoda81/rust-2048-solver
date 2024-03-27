@@ -103,16 +103,18 @@ impl<const ROWS: usize, const COLS: usize>
         self.deadline = constraint.deadline;
 
         // Search deeper loop
-        // NOTE: this can be done concurrently
+        // PERF: this can be done concurrently
         loop {
             self.logger
                 .register_search_result(&search_handle, &decision);
 
-            let Decision::Act(last_decision) = decision else {
-                break;
+            // If last decision was Resign break
+            let last_decision = match decision {
+                Decision::Act(last_decision) => last_decision,
+                Decision::Resign => break,
             };
 
-            // Reached the max_depth, quit
+            // Reached the max_depth, abort
             if last_decision.eval.min_depth >= constraint.max_depth {
                 break;
             }
@@ -120,9 +122,10 @@ impl<const ROWS: usize, const COLS: usize>
             // Move the depth limit higher for a deeper search
             self.depth_limit = last_decision.eval.min_depth + 1;
 
-            let best_action: DecisionResult = self.make_decision(state);
-            let Ok(new_decision) = best_action else { break };
-            decision = new_decision;
+            match self.make_decision(state) {
+                Ok(new_decision) => decision = new_decision,
+                Err(SearchError::TimeOut) => break,
+            }
         }
 
         self.logger.end_search(search_handle);

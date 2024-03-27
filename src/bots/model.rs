@@ -10,7 +10,6 @@ use std::{
 
 use itertools::Itertools;
 
-pub mod preprocessor;
 pub mod prioritized;
 pub mod weighted;
 
