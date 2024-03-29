@@ -1,13 +1,15 @@
 pub mod fast_swipe;
 
-use rand::distributions::{Distribution, WeightedIndex};
-use rand::seq::SliceRandom;
-use std::fmt::Write as _;
-use std::hash::Hash;
-use std::{
-    array, fmt,
-    ops::{Deref, DerefMut},
+use rand::{
+    distributions::{Distribution, WeightedIndex},
+    seq::SliceRandom,
 };
+use std::num::NonZeroU8;
+use std::ops::{Deref, DerefMut};
+use std::simd::{cmp::SimdPartialEq, u8x16};
+use std::{array, fmt};
+use std::{fmt::Write as _, u128};
+use std::{hash::Hash, marker::PhantomData};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
@@ -37,7 +39,7 @@ impl fmt::Display for Direction {
     }
 }
 
-pub type Weight = u8;
+pub type Weight = NonZeroU8;
 pub type Cell = u8;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -47,7 +49,13 @@ pub struct Cells<const COLS: usize, const ROWS: usize> {
 
 impl<const COLS: usize, const ROWS: usize> Cells<COLS, ROWS> {
     pub fn new() -> Self {
-        [[0; COLS]; ROWS].into()
+        Self::from_cells([[0; COLS]; ROWS])
+    }
+
+    pub fn from_cells(cells: impl Into<[[Cell; COLS]; ROWS]>) -> Self {
+        Self {
+            cells: cells.into(),
+        }
     }
 
     pub fn count_empty(&self) -> usize {
@@ -55,27 +63,11 @@ impl<const COLS: usize, const ROWS: usize> Cells<COLS, ROWS> {
         self.into_iter().flatten().filter(|&c| c == 0).count()
     }
 
-    pub fn into_spawns(self) -> impl Iterator<Item = (Self, Weight)> {
-        self.into_iter()
-            .enumerate()
-            .flat_map(|(i, row)| {
-                row.into_iter()
-                    .enumerate()
-                    .filter_map(move |(j, cell)| (cell == 0).then_some((i, j)))
-            })
-            .flat_map(move |(i, j)| {
-                [(1, 2), (2, 1)].map(|(cell, weight)| {
-                    let mut new_board = self;
-                    new_board.cells[i][j] = cell;
-                    (new_board, weight)
-                })
-            })
-
-        // PERF: We should be able to represent the state of this iterator using a single 128 bit mask
-        // Spawns::new(self)
+    pub fn into_spawns(self) -> impl Iterator<Item = (Weight, Self)> {
+        Spawns::new(self)
     }
 
-    pub fn iter_spawns_random(self) -> impl Iterator<Item = (Self, Weight)> {
+    pub fn iter_spawns_random(self) -> impl Iterator<Item = (Weight, Self)> {
         // PERF: This can probably be optimized
         let mut positions = Vec::with_capacity(16);
         positions.extend(self.into_iter().enumerate().flat_map(|(i, row)| {
@@ -89,7 +81,7 @@ impl<const COLS: usize, const ROWS: usize> Cells<COLS, ROWS> {
             [(1, 2), (2, 1)].map(|(cell, weight)| {
                 let mut new_board = self;
                 new_board.cells[i][j] = cell;
-                (new_board, weight)
+                (Weight::new(weight).unwrap(), new_board)
             })
         })
     }
@@ -98,11 +90,11 @@ impl<const COLS: usize, const ROWS: usize> Cells<COLS, ROWS> {
     pub fn random_spawn(&self) -> Self {
         // PERF: Don't generate all the possible states beforehand
         let options: Vec<_> = self.into_spawns().collect();
-        let weights = options.iter().map(|(_board, weight)| weight);
+        let weights = options.iter().map(|(weight, _board)| weight.get());
         let dist = WeightedIndex::new(weights).unwrap();
         let mut rng = rand::thread_rng();
         let index = dist.sample(&mut rng);
-        options[index].0
+        options[index].1
     }
 
     pub fn swipe_left(&mut self) -> bool {
@@ -186,7 +178,7 @@ impl<const COLS: usize, const ROWS: usize> Cells<COLS, ROWS> {
             }
         }
 
-        Cells::from(transposed)
+        Cells::from_cells(transposed)
     }
 
     pub fn columns(self) -> impl Iterator<Item = [Cell; ROWS]> {
@@ -201,8 +193,14 @@ impl<const COLS: usize, const ROWS: usize> Cells<COLS, ROWS> {
 impl Cells<4, 4> {
     pub fn as_u128(self) -> u128 {
         // SAFETY: we know the slice is 16 bytes and has the same layout
-        let bytes = unsafe { *self.cells.as_ptr().cast::<[u8; 16]>() };
+        let bytes = unsafe { std::mem::transmute(self.cells) };
         u128::from_le_bytes(bytes)
+    }
+
+    fn as_simd(self) -> u8x16 {
+        // SAFETY: we know the slice is 16 bytes and has the same layout
+        let bytes = unsafe { std::mem::transmute(self.cells) };
+        u8x16::from_array(bytes)
     }
 }
 
@@ -265,15 +263,27 @@ impl<const COLS: usize, const ROWS: usize> fmt::Display for Cells<COLS, ROWS> {
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> From<[[Cell; COLS]; ROWS]> for Cells<COLS, ROWS> {
-    fn from(cells: [[Cell; COLS]; ROWS]) -> Self {
-        Self { cells }
-    }
-}
-
 impl<const COLS: usize, const ROWS: usize> From<Cells<COLS, ROWS>> for [[Cell; COLS]; ROWS] {
     fn from(board: Cells<COLS, ROWS>) -> Self {
         *board
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+#[error("COLS*ROWS should be {} but its ({ROWS}*{COLS}={})", std::mem::size_of::<u128>(), ROWS * COLS)]
+pub struct SizeMismatch<const COLS: usize, const ROWS: usize>(pub PhantomData<[[(); COLS]; ROWS]>);
+impl<const COLS: usize, const ROWS: usize> TryFrom<u128> for Cells<COLS, ROWS> {
+    type Error = SizeMismatch<COLS, ROWS>;
+
+    fn try_from(value: u128) -> Result<Self, Self::Error> {
+        let bytes = value.to_le_bytes();
+        if COLS * ROWS == bytes.len() {
+            // SAFETY: A [u8; COLS * ROWS] has the same size and layout as [[u8; COLS]; ROWS]
+            let bytes: [[u8; COLS]; ROWS] = unsafe { *bytes.as_ptr().cast() };
+            Ok(Self::from_cells(bytes))
+        } else {
+            Err(SizeMismatch(PhantomData))
+        }
     }
 }
 
@@ -294,21 +304,79 @@ impl<const COLS: usize, const ROWS: usize> DerefMut for Cells<COLS, ROWS> {
 #[derive(Debug)]
 pub struct Spawns<const COLS: usize, const ROWS: usize> {
     cells: Cells<COLS, ROWS>,
-    state: [[u8; COLS]; ROWS],
+    mask: Cells<COLS, ROWS>,
 }
 
 impl<const COLS: usize, const ROWS: usize> Spawns<COLS, ROWS> {
     pub fn new(cells: Cells<COLS, ROWS>) -> Spawns<COLS, ROWS> {
-        let mut state = [[0; COLS]; ROWS];
-        state[0][0] = 2;
-        Spawns { cells, state }
+        let mut mask = Cells::new();
+        mask.cells[0][0] = 2;
+        Spawns { cells, mask }
+    }
+}
+
+impl Spawns<4, 4> {
+    fn fast_next(&mut self) -> Option<<Self as Iterator>::Item> {
+        loop {
+            let simd_cells = self.cells.as_simd();
+            let simd_masks = self.mask.as_simd();
+
+            if simd_masks == u8x16::splat(0) {
+                break;
+            }
+
+            let has_1 = (simd_masks & u8x16::splat(1)) != u8x16::splat(0);
+            let weight = Weight::new(if has_1 { 2 } else { 1 });
+
+            let result = (simd_cells | simd_masks).to_array();
+
+            // SAFETY: A [Cell; 16] has the same size and layout as [[Cell; 4]; 4].
+            let result: [[u8; 4]; 4] = unsafe { std::mem::transmute(result) };
+            let result = Cells::from_cells(result);
+            // log::trace!("-----------------");
+            // log::trace!("Weight: {weight:?}, Mask:\n{mask}", mask = self.mask);
+
+            let zero_mask = simd_masks.simd_eq(u8x16::splat(0));
+            let last_element_zero = zero_mask.test(15);
+
+            let sub = if last_element_zero { 0 } else { 1 };
+            let simd_masks =
+                simd_masks - u8x16::from_array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, sub]);
+
+            // Rotate bytes to the right
+            let mask_bytes = simd_masks.rotate_elements_right::<1>();
+
+            // SAFETY: A [Cell; 16] has the same size and layout as [[Cell; 4]; 4].
+            let unflatten_bytes: [[Cell; 4]; 4] = unsafe { std::mem::transmute(mask_bytes) };
+            self.mask = Cells::from_cells(unflatten_bytes);
+
+            let cell_zero = simd_cells.simd_eq(u8x16::splat(0));
+            if (zero_mask | cell_zero).all() {
+                // log::trace!("New:\n{result}");
+                // std::io::stdin().read_line(&mut String::new()).unwrap();
+                return weight.map(|w| (w, result));
+            }
+
+            // log::trace!("Skipping, cells:\n{cells}", cells = self.cells);
+            // if !cell_zero.any() {
+            //     std::io::stdin().read_line(&mut String::new()).unwrap();
+            // }
+        }
+
+        None
     }
 }
 
 impl<const COLS: usize, const ROWS: usize> Iterator for Spawns<COLS, ROWS> {
-    type Item = (Cells<COLS, ROWS>, Weight);
+    type Item = (Weight, Cells<COLS, ROWS>);
 
     fn next(&mut self) -> Option<Self::Item> {
+        if let Some(spawns) = <dyn std::any::Any>::downcast_mut::<Spawns<4, 4>>(self) {
+            let result = spawns.fast_next();
+            return *<dyn std::any::Any>::downcast_ref(&result).unwrap();
+        }
+
+        // TODO:
         todo!()
     }
 }
@@ -316,7 +384,9 @@ impl<const COLS: usize, const ROWS: usize> Iterator for Spawns<COLS, ROWS> {
 // TODO: Write a macro for creating boards
 #[cfg(test)]
 mod test_board {
-    use super::Cells;
+    use super::{Cells, Weight};
+    use itertools::Itertools;
+    use std::sync::Once;
 
     type TestCase = ([[u8; 4]; 4], [[u8; 4]; 4]);
 
@@ -363,16 +433,29 @@ mod test_board {
         ),
     ];
 
+    static INIT: Once = Once::new();
+
+    /// Setup function that is only run once, even if called multiple times.
+    fn setup() {
+        INIT.call_once(|| {
+            env_logger::Builder::new()
+                .filter_level(log::LevelFilter::Trace)
+                .parse_default_env()
+                .init();
+        });
+    }
+
     #[test]
     fn test_swipe() {
+        setup();
         let reversed = |mut row: [u8; 4]| {
             row.reverse();
             row
         };
 
         for (inp, expected_out) in TEST_CASES.iter().copied() {
-            let inp = Cells::from(inp);
-            let expected_out = Cells::from(expected_out);
+            let inp = Cells::from_cells(inp);
+            let expected_out = Cells::from_cells(expected_out);
 
             {
                 let mut cells = inp;
@@ -380,8 +463,8 @@ mod test_board {
                 assert_eq!(cells, expected_out, "Input: {inp:?}");
             }
             {
-                let inp = Cells::from(inp.map(reversed));
-                let expected_out = Cells::from(expected_out.map(reversed));
+                let inp = Cells::from_cells(inp.map(reversed));
+                let expected_out = Cells::from_cells(expected_out.map(reversed));
 
                 let mut cells = inp;
                 assert_eq!(cells.swipe_right(), inp != expected_out, "Input: {inp:?}");
@@ -396,8 +479,8 @@ mod test_board {
                 assert_eq!(cells, expected_out, "Input: {inp:?}");
             }
             {
-                let inp = Cells::from(inp.map(reversed)).transposed();
-                let expected_out = Cells::from(expected_out.map(reversed)).transposed();
+                let inp = Cells::from_cells(inp.map(reversed)).transposed();
+                let expected_out = Cells::from_cells(expected_out.map(reversed)).transposed();
 
                 let mut cells = inp;
                 assert_eq!(cells.swipe_down(), inp != expected_out, "Input: {inp:?}");
@@ -406,6 +489,49 @@ mod test_board {
         }
     }
 
+    #[test]
+    fn test_spawns() {
+        setup();
+        for &cells in TEST_CASES.iter().flat_map(|(i, o)| [i, o]) {
+            let cells = Cells::from_cells(cells);
+            let mut fast_spawns = cells
+                .into_spawns()
+                .sorted_by(|(_, cells1), (_, cells2)| cells1.cells.cmp(&cells2.cells));
+
+            let mut slow_spawns = cells
+                .into_iter()
+                .enumerate()
+                .flat_map(|(i, row)| {
+                    row.into_iter()
+                        .enumerate()
+                        .filter_map(move |(j, cell)| (cell == 0).then_some((i, j)))
+                })
+                .flat_map(move |(i, j)| {
+                    [(1, 2), (2, 1)].map(|(weight, cell)| {
+                        let mut new_board = cells;
+                        new_board.cells[i][j] = cell;
+                        (Weight::new(weight).unwrap(), new_board)
+                    })
+                })
+                .sorted_by(|(_, cells1), (_, cells2)| cells1.cells.cmp(&cells2.cells));
+
+            for ((weight1, cells1), (weight2, cells2)) in (&mut fast_spawns).zip(&mut slow_spawns) {
+                assert_eq!(
+                    cells1, cells2,
+                    "Fast cell:\n{cells1}\nis not equal to slow cell:\n{cells2}"
+                );
+                assert_eq!(weight1, weight2, "Weights are not equal for: \n{cells1}");
+            }
+
+            if let Some((weight, cells)) = fast_spawns.next() {
+                panic!("Fast spawn yielded an extra spawn: weight={weight:?}\n{cells}");
+            }
+
+            if let Some((weight, cells)) = slow_spawns.next() {
+                panic!("Slow spawn yielded an extra spawn: weight={weight:?}\n{cells}");
+            }
+        }
+    }
+
     // TODO: Test count empty
-    // TODO: Test iter spawns
 }

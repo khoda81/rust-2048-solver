@@ -1,6 +1,5 @@
 use std::{
     cmp,
-    collections::HashMap,
     fmt::{self, Debug, Display, Write as _},
     hash::Hash,
     time::Duration,
@@ -8,7 +7,7 @@ use std::{
 
 use itertools::Itertools;
 
-use crate::bots::{heuristic, mean_max::MeanMax, model::Accumulator};
+use crate::bots::{mean_max::MeanMax, model::Accumulator};
 
 /// Iterator is the lexicographic maximum of all the iterators added to it.
 ///
@@ -95,6 +94,7 @@ pub fn print_model<K: Debug + Ord, V: Display>(model: &Accumulator<K, V>) {
 }
 
 // TODO: make these generic
+
 // pub fn print_lookup<S>(ai: &MeanMax<S, heuristic::PreprocessedBoard>) {
 //     let mut new_lookup = heuristic::get_lookup().clone();
 //

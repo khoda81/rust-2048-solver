@@ -1,17 +1,14 @@
-use criterion::BenchmarkId;
-use criterion::{criterion_group, Criterion, Throughput};
+use criterion::{criterion_group, BenchmarkId, Criterion, Throughput};
 use rand::seq::SliceRandom;
-use rust_2048_solver::{
-    board::{Cells, Direction},
-    game,
-};
+use rust_2048_solver::game::twenty_forty_eight::board::{Cells, Direction};
+use rust_2048_solver::game::twenty_forty_eight::TwentyFortyEight;
 use std::hash::{self, Hash as _};
 
 type State = Cells<4, 4>;
 
 fn generate_states(count: usize) -> Vec<State> {
     #[rustfmt::skip]
-    let starting_state = State::from([
+    let starting_state = State::from_cells([
         [3, 3, 1, 1],
         [1, 0, 5, 0],
         [0, 2, 7, 4],
@@ -22,11 +19,11 @@ fn generate_states(count: usize) -> Vec<State> {
     let mut rng = rand::thread_rng();
     while states.len() < count {
         let state = *states.choose(&mut rng).unwrap();
-        let game = game::TwentyFortyEight::from(state);
+        let game = TwentyFortyEight { state };
         let iter = game
             .transitions()
             .flat_map(|transition| transition.next.into_spawns())
-            .map(|(new_state, _)| new_state);
+            .map(|(_weight, new_state)| new_state);
 
         states.extend(iter);
     }

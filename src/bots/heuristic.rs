@@ -1,8 +1,8 @@
+use crate::game::twenty_forty_eight::board::{Cell, Cells};
+// use lazy_static::lazy_static; // TODO: remove this and lazy_static crate
 use std::collections::HashMap;
 
-use lazy_static::lazy_static;
-
-use crate::game::twenty_forty_eight::board::{Cell, Cells};
+// TODO: Redo the heuristic.
 
 #[derive(Copy, Clone, Debug, Hash, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EmptyCount(pub u8);
@@ -19,22 +19,25 @@ pub type Eval = f64;
 pub fn preprocess_board<const ROWS: usize, const COLS: usize>(
     board: &Cells<ROWS, COLS>,
 ) -> PreprocessedBoard<ROWS, COLS> {
-    let ordered_count: usize = (0..ROWS - 1)
-        .map(|i| {
-            (0..COLS)
-                .filter(|&j| board[i][j] <= board[i + 1][j])
-                .count()
-        })
-        .sum::<usize>()
-        + (0..ROWS)
-            .map(|i| {
-                (0..COLS - 1)
-                    .filter(|&j| board[i][j] <= board[i][j + 1])
-                    .count()
-            })
-            .sum::<usize>();
+    // TODO:
+
+    // let ordered_count: usize = (0..ROWS - 1)
+    //     .map(|i| {
+    //         (0..COLS)
+    //             .filter(|&j| board[i][j] <= board[i + 1][j])
+    //             .count()
+    //     })
+    //     .sum::<usize>()
+    //     + (0..ROWS)
+    //         .map(|i| {
+    //             (0..COLS - 1)
+    //                 .filter(|&j| board[i][j] <= board[i][j + 1])
+    //                 .count()
+    //         })
+    //         .sum::<usize>();
 
     // TODO:
+
     // let diffs_sum: usize = (0..ROWS - 1)
     //     .map(|i| {
     //         (0..COLS)

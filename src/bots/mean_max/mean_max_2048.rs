@@ -21,14 +21,12 @@ impl<const ROWS: usize, const COLS: usize>
     MeanMax<Cells<ROWS, COLS>, heuristic::PreprocessedBoard<ROWS, COLS>>
 {
     fn train_model(&mut self, state: &Cells<ROWS, COLS>, eval: Evaluation) {
-        // FIX: temporarily disabling model train
-        let preprocessed_board = heuristic::preprocess_board(state);
+        // let preprocessed_board = heuristic::preprocess_board(state); // FIX: temporarily disabling model train
 
-        // TODO: This should be a model config?
-        let decay = 0.995;
+        // let decay = 0.995; // TODO: This should be a model config?
 
-        // TODO: Find a better way to weigh samples.
-        let weight = 1.0;
+        // let weight = 1.0; // TODO: Find a better way to weigh samples.
+
         // let weight = 2.0_f64.powi(eval.depth.into()) as heuristic::Eval;
 
         // let sample = Weighted::new_weighted(eval.value as f64, weight);
@@ -170,13 +168,13 @@ impl<const ROWS: usize, const COLS: usize>
         let mut mean_value = Weighted::<_, Value>::default();
         let mut min_depth = super::max_depth::MaxDepth::Unlimited;
 
-        for (state, weight) in transition.next.into_spawns() {
-            let eval = self.evaluate_state(
-                &game::twenty_forty_eight::TwentyFortyEight::from_state(state),
-            )?;
+        // TODO: Remove this entanglement of mean_max with Cells.
+        for (weight, state) in transition.next.into_spawns() {
+            let state = game::twenty_forty_eight::TwentyFortyEight::from_state(state);
+            let eval = self.evaluate_state(&state)?;
 
             min_depth = std::cmp::min(eval.min_depth, min_depth);
-            mean_value += Weighted::new_weighted(eval.value, weight.into());
+            mean_value += Weighted::new_weighted(eval.value, weight.get().into());
         }
 
         let eval = Evaluation {

@@ -4,7 +4,7 @@ type Action = Direction;
 pub mod board;
 
 use super::Transition;
-use board::{Cells, Direction};
+use board::{Cell, Cells, Direction};
 use std::fmt::{self, Display};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -12,14 +12,18 @@ pub struct TwentyFortyEight<const COLS: usize, const ROWS: usize> {
     pub state: Cells<COLS, ROWS>,
 }
 
-impl<const ROWS: usize, const COLS: usize> TwentyFortyEight<ROWS, COLS> {
+impl<const COLS: usize, const ROWS: usize> TwentyFortyEight<COLS, ROWS> {
     pub(crate) const ACTIONS: &'static [Action] = Action::ALL;
 
     pub fn new() -> Self {
         Self::from_state(Cells::new().random_spawn())
     }
 
-    pub fn from_state(state: Cells<ROWS, COLS>) -> Self {
+    pub fn from_cells(cells: impl Into<[[Cell; COLS]; ROWS]>) -> Self {
+        Self::from_state(Cells::from_cells(cells))
+    }
+
+    pub fn from_state(state: Cells<COLS, ROWS>) -> Self {
         TwentyFortyEight { state }
     }
 
@@ -35,7 +39,7 @@ impl<const ROWS: usize, const COLS: usize> TwentyFortyEight<ROWS, COLS> {
     pub fn half_step(
         self,
         action: Action,
-    ) -> Option<Transition<Action, Reward, Cells<ROWS, COLS>>> {
+    ) -> Option<Transition<Action, Reward, Cells<COLS, ROWS>>> {
         let mut state = self.state;
         if !state.swipe(action) {
             return None;
@@ -57,7 +61,7 @@ impl<const ROWS: usize, const COLS: usize> TwentyFortyEight<ROWS, COLS> {
 
     pub fn transitions(
         &self,
-    ) -> impl Iterator<Item = Transition<Action, Reward, Cells<ROWS, COLS>>> + '_ {
+    ) -> impl Iterator<Item = Transition<Action, Reward, Cells<COLS, ROWS>>> + '_ {
         let possible_actions = (!self.terminal())
             .then_some(Self::ACTIONS)
             .into_iter()
@@ -67,7 +71,7 @@ impl<const ROWS: usize, const COLS: usize> TwentyFortyEight<ROWS, COLS> {
     }
 }
 
-impl<const ROWS: usize, const COLS: usize> Display for TwentyFortyEight<ROWS, COLS> {
+impl<const ROWS: usize, const COLS: usize> Display for TwentyFortyEight<COLS, ROWS> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.state.fmt(f)
     }
