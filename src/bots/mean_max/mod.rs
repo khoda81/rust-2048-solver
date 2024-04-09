@@ -2,7 +2,7 @@ pub mod logger;
 pub mod max_depth;
 pub mod mean_max_2048;
 
-use crate::accumulator::weighted::Weighted;
+use crate::accumulator::fraction::{Fraction, Weighted};
 use crate::{bots::heuristic, game, utils};
 use std::fmt::Debug;
 use std::{cmp, fmt::Display, hash::Hash, time::Instant};
@@ -334,34 +334,20 @@ where
             }
         };
 
-        let mut mean_value = Weighted::default();
+        let mut mean_value = Fraction::default();
         let mut min_depth = max_depth::MaxDepth::Unlimited;
 
         for weighted in outcome.clone() {
             let eval = self.evaluate_state(&weighted.value)?;
-            log::trace!("Back from evaluate state");
+
             min_depth = std::cmp::min(eval.min_depth, min_depth);
-
-            log::trace!("Making a weighted from {:?}", weighted.weight);
-
-            let weight = f32::from(weighted.weight);
-            log::trace!("out of eval={}, weight={weight}", eval.value);
-
-            log::trace!(
-                "Making a weghted out of eval={}, weight={weight}",
-                eval.value
-            );
-
-            let weighted_eval = Weighted::new_weighted(eval.value, weight);
-            log::trace!("Adding {weighted_eval} to {mean_value}");
-            mean_value += weighted_eval;
-            log::trace!("Added weghted eval");
+            mean_value += Weighted::new(eval.value, f32::from(weighted.weight)).to_fraction();
         }
 
         log::trace!("Evaluation done!");
 
         let eval = Evaluation {
-            value: mean_value.weighted_average(),
+            value: mean_value.evaluate(),
             min_depth: min_depth + 1,
         };
 

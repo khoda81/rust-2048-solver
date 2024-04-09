@@ -1,6 +1,6 @@
 pub mod fast_swipe;
 
-use crate::accumulator::weighted::Weighted;
+use crate::accumulator::fraction::Weighted;
 use std::fmt::Write as _;
 use std::marker::PhantomData;
 use std::num::NonZeroU8;
@@ -62,6 +62,7 @@ impl Iterator for Directions {
 }
 
 // TODO: Implement From for {i32, u32, u8, i8, ...}
+// TODO: Change this to an enum of 1/2
 #[derive(Debug, Clone, Copy)]
 pub struct Weight(NonZeroU8);
 impl Weight {
@@ -373,10 +374,7 @@ impl Spawns<4, 4> {
             if (zero_mask | cell_zero).all() {
                 // log::trace!("New:\n{result}");
                 // std::io::stdin().read_line(&mut String::new()).unwrap();
-                return weight.map(|weight| Weighted {
-                    weight,
-                    value: result,
-                });
+                return weight.map(|weight| Weighted::new(result, weight));
             }
 
             // log::trace!("Skipping, cells:\n{cells}", cells = self.cells);
@@ -407,7 +405,7 @@ impl<const COLS: usize, const ROWS: usize> Iterator for Spawns<COLS, ROWS> {
 #[cfg(test)]
 mod test_board {
     use super::{Cells, Spawns, Weight};
-    use crate::accumulator::weighted::Weighted;
+    use crate::accumulator::fraction::Weighted;
     use itertools::Itertools;
     use std::sync::Once;
 
@@ -531,10 +529,7 @@ mod test_board {
                     [(1, 2), (2, 1)].map(|(weight, cell)| {
                         let mut new_board = cells;
                         new_board.cells[i][j] = cell;
-                        Weighted {
-                            weight: Weight::new(weight).unwrap(),
-                            value: new_board,
-                        }
+                        Weighted::new(new_board, Weight::new(weight).unwrap())
                     })
                 })
                 .sorted_by_key(|spawns| spawns.value.cells);

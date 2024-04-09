@@ -1,8 +1,8 @@
 pub mod board;
 
 use super::{DiscreteDistribution, GameState, Outcome};
-use crate::accumulator::weighted::Weighted;
-use board::{Cell, Cells, Direction};
+use crate::accumulator::fraction::Weighted;
+use board::{Cells, Direction};
 use rand::distributions::{Distribution as _, WeightedError, WeightedIndex};
 use std::fmt::{self, Debug, Display};
 
@@ -13,8 +13,6 @@ pub struct TwentyFortyEight<const COLS: usize, const ROWS: usize> {
 }
 
 impl<const COLS: usize, const ROWS: usize> TwentyFortyEight<COLS, ROWS> {
-    // pub(crate) const ACTIONS: &'static [Action] = Action::ALL;
-
     pub fn new() -> Self {
         let cells = Cells::new();
         // PERF: Don't generate all the possible states beforehand
@@ -26,10 +24,6 @@ impl<const COLS: usize, const ROWS: usize> TwentyFortyEight<COLS, ROWS> {
 
         Self::from_cells(options[index].value)
     }
-
-    // pub fn from_cells(cells: impl Into<[[Cell; COLS]; ROWS]>) -> Self {
-    //     Self::from_cells(Cells::from_cells(cells))
-    // }
 
     pub fn from_cells<C>(cells: C) -> Self
     where

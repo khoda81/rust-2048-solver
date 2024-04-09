@@ -5,7 +5,7 @@ use std::io::Write;
 use std::time::{Duration, Instant};
 
 fn main() {
-    // TODO: Add command line arguments for deadline.
+    // TODO: Add command line arguments.
 
     // show_map(heuristic::get_lookup());
 

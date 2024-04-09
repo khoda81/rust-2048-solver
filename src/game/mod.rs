@@ -1,6 +1,6 @@
 pub mod twenty_forty_eight;
 
-use crate::accumulator::weighted::Weighted;
+use crate::accumulator::fraction::Weighted;
 
 pub trait Outcome<G: GameState> {
     fn collapse(self) -> G;

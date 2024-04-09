@@ -9,8 +9,8 @@ use std::{
     ops::AddAssign,
 };
 
+pub mod fraction;
 pub mod prioritized;
-pub mod weighted;
 
 #[derive(Clone, Debug)]
 pub struct Accumulator<K, V> {
