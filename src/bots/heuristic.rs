@@ -1,6 +1,6 @@
 use crate::accumulator::Accumulator;
 use crate::game::twenty_forty_eight::board::{Cell, Cells};
-use crate::game::twenty_forty_eight::TwentyFortyEightOutcome;
+use crate::game::twenty_forty_eight::Outcome;
 use std::collections::HashMap;
 
 pub trait Heuristic<T, E> {
@@ -296,10 +296,10 @@ impl<const COLS: usize, const ROWS: usize> Default for TwentyFortyEightHeuristic
     }
 }
 
-impl<const ROWS: usize, const COLS: usize> Heuristic<TwentyFortyEightOutcome<COLS, ROWS>, Eval>
+impl<const ROWS: usize, const COLS: usize> Heuristic<Outcome<COLS, ROWS>, Eval>
     for TwentyFortyEightHeuristic<COLS, ROWS>
 {
-    fn eval(&self, state: &TwentyFortyEightOutcome<COLS, ROWS>) -> Eval {
+    fn eval(&self, state: &Outcome<COLS, ROWS>) -> Eval {
         let preprocessed_board = preprocess_board(&state.cells);
 
         if let Some(&eval) = self.accumulator.memory.get(&preprocessed_board) {
@@ -309,7 +309,7 @@ impl<const ROWS: usize, const COLS: usize> Heuristic<TwentyFortyEightOutcome<COL
         }
     }
 
-    fn update(&mut self, _state: TwentyFortyEightOutcome<COLS, ROWS>, _eval: Eval) {
+    fn update(&mut self, _state: Outcome<COLS, ROWS>, _eval: Eval) {
         // TODO: training is disabled
     }
 }

@@ -350,11 +350,9 @@ impl Spawns<4, 4> {
 
             let result = (simd_cells | simd_masks).to_array();
 
-            // SAFETY: A [Cell; 16] has the same size and layout as [[Cell; 4]; 4].
-            let result: [[u8; 4]; 4] = unsafe { std::mem::transmute(result) };
+            // SAFETY: A [Cell; 16] has the same layout as [[Cell; 4]; 4].
+            let result: [[Cell; 4]; 4] = unsafe { std::mem::transmute(result) };
             let result = Cells::from_cells(result);
-            // log::trace!("-----------------");
-            // log::trace!("Weight: {weight:?}, Mask:\n{mask}", mask = self.mask);
 
             let zero_mask = simd_masks.simd_eq(u8x16::splat(0));
             let last_element_zero = zero_mask.test(15);
@@ -366,21 +364,14 @@ impl Spawns<4, 4> {
             // Rotate bytes to the right
             let mask_bytes = simd_masks.rotate_elements_right::<1>();
 
-            // SAFETY: A [Cell; 16] has the same size and layout as [[Cell; 4]; 4].
+            // SAFETY: A [Cell; 16] has the same layout as [[Cell; 4]; 4].
             let unflatten_bytes: [[Cell; 4]; 4] = unsafe { std::mem::transmute(mask_bytes) };
             self.mask = Cells::from_cells(unflatten_bytes);
 
             let cell_zero = simd_cells.simd_eq(u8x16::splat(0));
             if (zero_mask | cell_zero).all() {
-                // log::trace!("New:\n{result}");
-                // std::io::stdin().read_line(&mut String::new()).unwrap();
                 return weight.map(|weight| Weighted::new(result, weight));
             }
-
-            // log::trace!("Skipping, cells:\n{cells}", cells = self.cells);
-            // if !cell_zero.any() {
-            //     std::io::stdin().read_line(&mut String::new()).unwrap();
-            // }
         }
 
         None
@@ -399,6 +390,8 @@ impl<const COLS: usize, const ROWS: usize> Iterator for Spawns<COLS, ROWS> {
         // TODO:
         todo!()
     }
+
+    // TODO: Implement size_hint?
 }
 
 // TODO: Write a macro for creating boards

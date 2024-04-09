@@ -94,4 +94,3 @@ impl<T, W: Clone> Weighted<T, W> {
         }
     }
 }
-// TODO: Rename current Weighted to Fraction and add a new type called weighted with proper semantics

@@ -1,6 +1,6 @@
 use criterion::{criterion_group, Bencher, BenchmarkId, Criterion};
 use rust_2048_solver::bots::mean_max::{max_depth::MaxDepth as Bound, MeanMax, SearchConstraint};
-use rust_2048_solver::game::twenty_forty_eight::TwentyFortyEight as State;
+use rust_2048_solver::game::twenty_forty_eight::State;
 
 fn run_search<const COLS: usize, const ROWS: usize>(
     b: &mut Bencher,

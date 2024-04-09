@@ -1,11 +1,10 @@
 use criterion::{criterion_group, BenchmarkId, Criterion, Throughput};
 use rand::seq::SliceRandom;
-use rust_2048_solver::game::twenty_forty_eight::TwentyFortyEight;
+use rust_2048_solver::game::twenty_forty_eight::State;
 use rust_2048_solver::game::{Discrete, GameState, Outcome};
 use std::hash::{self, Hash as _};
 
-type State = TwentyFortyEight<4, 4>;
-fn generate_states(count: usize) -> Vec<State> {
+fn generate_states(count: usize) -> Vec<State<4, 4>> {
     #[rustfmt::skip]
     let starting_state = State::from_cells([
         [3, 3, 1, 1],
@@ -19,7 +18,7 @@ fn generate_states(count: usize) -> Vec<State> {
     while states.len() < count {
         let state = states.choose(&mut rng).unwrap().clone();
 
-        for action in <State as GameState>::Action::iter() {
+        for action in <State<4, 4> as GameState>::Action::iter() {
             let (_reward, outcome) = state.clone().outcome(action);
             states.extend(outcome.into_iter().map(|weighted| weighted.value));
         }
@@ -51,11 +50,11 @@ fn bench_hash(c: &mut Criterion) {
 }
 
 fn bench_board_swipe(c: &mut Criterion) {
-    let mut state = State::new();
+    let mut state = State::<4, 4>::new();
 
     c.bench_function("updates", |b| {
         b.iter(|| {
-            for action in <State as GameState>::Action::iter() {
+            for action in <State<4, 4> as GameState>::Action::iter() {
                 let (_reward, outcome) = state.clone().outcome(action);
                 state = outcome.collapse();
             }

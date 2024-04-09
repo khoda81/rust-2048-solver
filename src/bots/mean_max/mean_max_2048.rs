@@ -1,9 +1,9 @@
 use crate::bots::heuristic::TwentyFortyEightHeuristic;
-use crate::game::twenty_forty_eight::TwentyFortyEight;
+use crate::game::twenty_forty_eight::State;
 use std::num::NonZeroUsize;
 
 impl<const ROWS: usize, const COLS: usize>
-    super::MeanMax<TwentyFortyEight<COLS, ROWS>, TwentyFortyEightHeuristic<COLS, ROWS>>
+    super::MeanMax<State<COLS, ROWS>, TwentyFortyEightHeuristic<COLS, ROWS>>
 {
     const DEFAULT_CACHE_SIZE: usize = 10_000_000;
 
@@ -23,7 +23,7 @@ impl<const ROWS: usize, const COLS: usize>
 }
 
 impl<const ROWS: usize, const COLS: usize> Default
-    for super::MeanMax<TwentyFortyEight<COLS, ROWS>, TwentyFortyEightHeuristic<COLS, ROWS>>
+    for super::MeanMax<State<COLS, ROWS>, TwentyFortyEightHeuristic<COLS, ROWS>>
 {
     fn default() -> Self {
         Self::new()
