@@ -7,7 +7,7 @@ use std::{
 
 use itertools::Itertools;
 
-use crate::bots::{mean_max::MeanMax, model::Accumulator};
+use crate::accumulator;
 
 /// Iterator is the lexicographic maximum of all the iterators added to it.
 ///
@@ -75,17 +75,17 @@ impl<T: Ord> Iterator for MaxIter<'_, T> {
     }
 }
 
-pub fn show_fill_percent<S, P>(ai: &MeanMax<S, P>)
+pub fn show_fill_percent<K, V>(cache: &lru::LruCache<K, V>)
 where
-    S: Eq + Hash,
+    K: Eq + Hash,
 {
-    let capacity = ai.evaluation_cache.cap().get();
-    let filled = ai.evaluation_cache.len();
+    let capacity = cache.cap().get();
+    let filled = cache.len();
     let fill_percent = (filled * 100) as f64 / capacity as f64;
     println!("Evaluation cache is {fill_percent:.2?}% filled",);
 }
 
-pub fn print_model<K: Debug + Ord, V: Display>(model: &Accumulator<K, V>) {
+pub fn print_model<K: Debug + Ord, V: Display>(model: &accumulator::Accumulator<K, V>) {
     model
         .memory
         .iter()

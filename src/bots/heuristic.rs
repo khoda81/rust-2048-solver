@@ -1,9 +1,30 @@
+use crate::accumulator::Accumulator;
 use crate::game::twenty_forty_eight::board::{Cell, Cells};
-// use lazy_static::lazy_static; // TODO: remove this and lazy_static crate
+use crate::game::twenty_forty_eight::TwentyFortyEightOutcome;
 use std::collections::HashMap;
 
-// TODO: Redo the heuristic.
+pub trait Heuristic<T, E> {
+    fn eval(&self, state: &T) -> E;
+    fn update(&mut self, state: T, eval: E);
+}
 
+// fn train_model(&mut self, state: &G, eval: Evaluation) {
+//     // let preprocessed_board = heuristic::preprocess_board(state); // FIX: temporarily disabling model train
+//
+//     // let decay = 0.995; // TODO: This should be a model config?
+//
+//     // let weight = 1.0; // TODO: Find a better way to weigh samples.
+//
+//     // let weight = 2.0_f64.powi(eval.depth.into()) as heuristic::Eval;
+//
+//     // let sample = Weighted::new_weighted(eval.value as f64, weight);
+//     // prev_eval.total_value *= decay;
+//     // prev_eval.total_weight *= decay;
+//     //
+//     // self.model.accumulate(preprocessed_board, sample)
+// }
+
+// TODO: Redo the heuristic.
 #[derive(Copy, Clone, Debug, Hash, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EmptyCount(pub u8);
 #[derive(Copy, Clone, Debug, Hash, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -14,7 +35,7 @@ pub struct Ordered(pub u8);
 pub struct DiffSum(pub u8);
 // pub type PreprocessedBoard = (EmptyCount, MaxCell, Ordered);
 pub type PreprocessedBoard<const ROWS: usize, const COLS: usize> = Cells<ROWS, COLS>;
-pub type Eval = f64;
+pub type Eval = f32;
 
 pub fn preprocess_board<const ROWS: usize, const COLS: usize>(
     board: &Cells<ROWS, COLS>,
@@ -58,12 +79,12 @@ pub fn preprocess_board<const ROWS: usize, const COLS: usize>(
     //     MaxCell(board.into_iter().flatten().max().unwrap() as Cell),
     //     Ordered(ordered_count as u8),
     // )
-    board.clone()
+    *board
 }
 
 pub fn generate_lookup<const ROWS: usize, const COLS: usize>(
 ) -> HashMap<PreprocessedBoard<ROWS, COLS>, Eval> {
-    let mut map = HashMap::new();
+    // let mut map = HashMap::new();
 
     // map.insert((EmptyCount(11), MaxCell(1)), 3469.7003173828125);
     // map.insert((EmptyCount(12), MaxCell(1)), 3610.103654191301);
@@ -205,7 +226,7 @@ pub fn generate_lookup<const ROWS: usize, const COLS: usize>(
     // map.insert((EmptyCount(8), MaxCell(12)), 26.85899097818347);
     // map.insert((EmptyCount(9), MaxCell(12)), 25.124716332382043);
 
-    map
+    HashMap::new()
 }
 
 type LookupTable<const ROWS: usize, const COLS: usize> =
@@ -213,7 +234,7 @@ type LookupTable<const ROWS: usize, const COLS: usize> =
 
 pub fn get_lookup<const ROWS: usize, const COLS: usize>() -> &'static LookupTable<ROWS, COLS> {
     // PERF: This can become static.
-    let lookup: HashMap<PreprocessedBoard<ROWS, COLS>, f64> = generate_lookup();
+    let lookup: HashMap<PreprocessedBoard<ROWS, COLS>, Eval> = generate_lookup();
     let boxed_lookup = Box::new(lookup);
     Box::leak(boxed_lookup)
 }
@@ -228,23 +249,23 @@ pub fn heuristic<const ROWS: usize, const COLS: usize>(
     // )
 }
 
-fn empty_count_max_cell_lookup<const ROWS: usize, const COLS: usize>(
-    preprocessed_board: PreprocessedBoard<ROWS, COLS>,
-) -> Option<Eval> {
-    // PERF: Replace this with binary search.
-    get_lookup().get(&preprocessed_board).copied()
-}
+// fn empty_count_max_cell_lookup<const ROWS: usize, const COLS: usize>(
+//     preprocessed_board: PreprocessedBoard<ROWS, COLS>,
+// ) -> Option<Eval> {
+//     // PERF: Replace this with binary search.
+//     get_lookup().get(&preprocessed_board).copied()
+// }
+//
+// fn empty_count_lookup_table(EmptyCount(empty_count): EmptyCount) -> Option<Eval> {
+//     [
+//         15.82, 35.14, 752.49, 633.58, 1909.69, 3259.14, 3320.45, 3356.29, 3388.47, 3388.15,
+//         3446.54, 3541.35, 4071.11, 4961.21, 7341.16, 9085.73,
+//     ]
+//     .get(empty_count as usize)
+//     .copied()
+// }
 
-fn empty_count_lookup_table(EmptyCount(empty_count): EmptyCount) -> Option<Eval> {
-    [
-        15.82, 35.14, 752.49, 633.58, 1909.69, 3259.14, 3320.45, 3356.29, 3388.47, 3388.15,
-        3446.54, 3541.35, 4071.11, 4961.21, 7341.16, 9085.73,
-    ]
-    .get(empty_count as usize)
-    .copied()
-}
-
-fn base_heuristic<const ROWS: usize, const COLS: usize>(
+fn base_heuristic<const COLS: usize, const ROWS: usize>(
     preprocessed_board: PreprocessedBoard<ROWS, COLS>,
 ) -> Eval {
     // let (EmptyCount(empty_count), _, Ordered(ordered)) = preprocessed_board;
@@ -254,4 +275,41 @@ fn base_heuristic<const ROWS: usize, const COLS: usize>(
     // 1.0
 
     2_usize.pow((preprocessed_board.count_empty() + 1) as u32) as Eval
+}
+
+#[derive(Debug)]
+pub struct TwentyFortyEightHeuristic<const COLS: usize, const ROWS: usize> {
+    accumulator: Accumulator<PreprocessedBoard<COLS, ROWS>, Eval>,
+}
+
+impl<const COLS: usize, const ROWS: usize> TwentyFortyEightHeuristic<COLS, ROWS> {
+    pub fn new() -> Self {
+        Self {
+            accumulator: Accumulator::new(),
+        }
+    }
+}
+
+impl<const COLS: usize, const ROWS: usize> Default for TwentyFortyEightHeuristic<COLS, ROWS> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const ROWS: usize, const COLS: usize> Heuristic<TwentyFortyEightOutcome<COLS, ROWS>, Eval>
+    for TwentyFortyEightHeuristic<COLS, ROWS>
+{
+    fn eval(&self, state: &TwentyFortyEightOutcome<COLS, ROWS>) -> Eval {
+        let preprocessed_board = preprocess_board(&state.cells);
+
+        if let Some(&eval) = self.accumulator.memory.get(&preprocessed_board) {
+            eval
+        } else {
+            base_heuristic(preprocessed_board)
+        }
+    }
+
+    fn update(&mut self, _state: TwentyFortyEightOutcome<COLS, ROWS>, _eval: Eval) {
+        // TODO: training is disabled
+    }
 }

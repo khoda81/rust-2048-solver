@@ -2,14 +2,13 @@ pub mod logger;
 pub mod max_depth;
 pub mod mean_max_2048;
 
-use crate::{
-    bots::model::{weighted::Weighted, Accumulator},
-    utils,
-};
-use std::{fmt::Display, hash::Hash, num::NonZeroUsize, time::Instant};
+use crate::accumulator::weighted::Weighted;
+use crate::{bots::heuristic, game, utils};
+use std::fmt::Debug;
+use std::{cmp, fmt::Display, hash::Hash, time::Instant};
 use thiserror::Error;
 
-type Value = f32;
+pub type Value = f32;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
 pub struct Evaluation {
@@ -56,7 +55,7 @@ pub struct EvaluatedAction<A> {
 impl<A: Display> Display for EvaluatedAction<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}: ", self.action)?;
-        self.eval.fmt(f)
+        Display::fmt(&self.eval, f)
     }
 }
 
@@ -171,34 +170,208 @@ impl Display for SearchConstraint {
 }
 
 // TODO: Add concurrency to cache and search
-pub struct MeanMax<State, P> {
+pub struct MeanMax<Game: game::GameState, Heuristic> {
     pub deadline: Option<Instant>,
     pub depth_limit: max_depth::MaxDepth,
-    pub evaluation_cache: lru::LruCache<State, Evaluation>,
-    pub model: Accumulator<P, Weighted<f64>>,
+    pub evaluation_cache: lru::LruCache<Game::Outcome, Evaluation>,
+    // pub model: Accumulator<P, Weighted<f64>>,
+    pub heuristic: Heuristic,
     pub logger: logger::Logger,
 }
 
-impl<S: Hash + Eq, P> Default for MeanMax<S, P> {
-    fn default() -> Self {
-        Self::new()
-    }
+// NOTE: This is equivalent to Decision
+pub type OptionEvaluation = Option<Evaluation>;
+pub type EvaluationResult = Result<Evaluation, SearchError>;
+pub type DecisionResult<A> = Result<Decision<A>, SearchError>;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+struct Transition<G: game::GameState> {
+    pub action: G::Action,
+    pub reward: G::Reward,
+    pub next: G,
 }
 
-impl<S: Hash + Eq, P> MeanMax<S, P> {
-    const DEFAULT_CACHE_SIZE: usize = 10_000_000;
+impl<G, H> MeanMax<G, H>
+where
+    G: game::GameState + Clone + Display,
+    G::Outcome: game::DiscreteDistribution<T = G> + Hash + cmp::Eq + Clone + Display,
+    G::Action: game::Discrete + Clone + Display,
+    Value: From<G::Reward> + From<<G::Outcome as game::DiscreteDistribution>::Weight>,
+    H: heuristic::Heuristic<G::Outcome, Value>,
+    <G::Outcome as game::DiscreteDistribution>::Weight: Debug,
+{
+    pub fn decide_until(&mut self, state: &G, constraint: SearchConstraint) -> Decision<G::Action> {
+        let search_handle = self.logger.start_search(state, constraint);
 
-    pub fn new() -> Self {
-        Self::new_with_cache_size(Self::DEFAULT_CACHE_SIZE.try_into().unwrap())
+        // Initial search depth
+        self.depth_limit = match constraint.deadline {
+            // If there is a deadline, start at depth 0 and go deeper
+            Some(_) => max_depth::MaxDepth::new(0),
+            // Otherwise, search with the maximum depth
+            None => constraint.max_depth,
+        };
+
+        // Remove the previous deadline for the initial search
+        self.deadline = None;
+
+        let mut decision = self
+            .make_decision(state)
+            .expect("searching with no constraint");
+
+        self.deadline = constraint.deadline;
+
+        // Search deeper loop
+        // PERF: this can be done concurrently
+        loop {
+            self.logger
+                .register_search_result(&search_handle, &decision);
+
+            // If last decision was Resign break
+            let last_decision = match &decision {
+                Decision::Act(last_decision) => last_decision,
+                Decision::Resign => break,
+            };
+
+            // Reached the max_depth, abort
+            if last_decision.eval.min_depth >= constraint.max_depth {
+                break;
+            }
+
+            // Move the depth limit higher for a deeper search
+            self.depth_limit = last_decision.eval.min_depth + 1;
+
+            match self.make_decision(state) {
+                Ok(new_decision) => decision = new_decision,
+                Err(SearchError::TimeOut) => break,
+            }
+        }
+
+        self.logger.end_search(search_handle);
+        decision
     }
 
-    pub fn new_with_cache_size(capacity: NonZeroUsize) -> Self {
-        Self {
-            evaluation_cache: lru::LruCache::new(capacity),
-            deadline: None,
-            depth_limit: max_depth::MaxDepth::Unlimited,
-            model: Accumulator::new(),
-            logger: logger::Logger::new(),
+    pub fn evaluate_state(&mut self, state: &G) -> EvaluationResult {
+        // TODO: Try deadline.elapsed?
+
+        if self
+            .deadline
+            .is_some_and(|deadline| std::time::Instant::now() >= deadline)
+        {
+            return Err(SearchError::TimeOut);
         }
+
+        let eval = self.make_decision(state)?.eval();
+        log::trace!("Back from make_decision to eval_state.");
+
+        Ok(eval)
+    }
+
+    pub fn make_decision(&mut self, state: &G) -> DecisionResult<<G as game::GameState>::Action> {
+        let mut best_decision = Decision::Resign;
+
+        log::trace!("Making decision for:\n{state}");
+
+        for action in <G::Action as game::Discrete>::iter() {
+            log::trace!("Trying action: {action}");
+            let (reward, outcome) = state.clone().outcome(action.clone());
+
+            // TODO: Make this iterative instead of recursive.
+            let eval = self.evaluate_outcome(outcome)?;
+            let eval = Evaluation {
+                value: eval.value + f32::from(reward),
+                min_depth: eval.min_depth,
+            };
+
+            let new_decision = Decision::Act(EvaluatedAction { eval, action });
+            best_decision = best_decision.max_by_eval(new_decision)
+        }
+
+        log::trace!("Made decision={best_decision} for:\n{state}");
+
+        Ok(best_decision)
+    }
+
+    fn cached_evaluation(&mut self, outcome: &G::Outcome) -> OptionEvaluation {
+        let mut cached_eval = self.evaluation_cache.get(outcome).copied();
+
+        if let Some(eval) = cached_eval.as_mut() {
+            if eval.min_depth < self.depth_limit {
+                cached_eval = None;
+            }
+        }
+
+        self.logger
+            .register_lookup_result(cached_eval.as_ref(), self.depth_limit);
+
+        cached_eval
+    }
+
+    fn evaluate_outcome(&mut self, outcome: G::Outcome) -> EvaluationResult {
+        log::trace!("Evaluating:\n{outcome}");
+
+        if outcome.clone().into_iter().next().is_none() {
+            log::trace!("Returning as terminal");
+            return Ok(Evaluation::TERMINAL);
+        }
+
+        if let Some(evaluation) = self.cached_evaluation(&outcome) {
+            log::trace!("Returning from cache: {evaluation}");
+            return Ok(evaluation);
+        }
+
+        // Decrease depth limit for the recursive call
+        self.depth_limit = match self.depth_limit - 1 {
+            Some(depth_limit) => depth_limit,
+            None => {
+                let evaluation = Evaluation {
+                    value: self.heuristic.eval(&outcome),
+                    min_depth: max_depth::MaxDepth::new(0),
+                };
+
+                log::trace!("Hit depth limit: {evaluation}");
+
+                return Ok(evaluation);
+            }
+        };
+
+        let mut mean_value = Weighted::default();
+        let mut min_depth = max_depth::MaxDepth::Unlimited;
+
+        for weighted in outcome.clone() {
+            let eval = self.evaluate_state(&weighted.value)?;
+            log::trace!("Back from evaluate state");
+            min_depth = std::cmp::min(eval.min_depth, min_depth);
+
+            log::trace!("Making a weighted from {:?}", weighted.weight);
+
+            let weight = f32::from(weighted.weight);
+            log::trace!("out of eval={}, weight={weight}", eval.value);
+
+            log::trace!(
+                "Making a weghted out of eval={}, weight={weight}",
+                eval.value
+            );
+
+            let weighted_eval = Weighted::new_weighted(eval.value, weight);
+            log::trace!("Adding {weighted_eval} to {mean_value}");
+            mean_value += weighted_eval;
+            log::trace!("Added weghted eval");
+        }
+
+        log::trace!("Evaluation done!");
+
+        let eval = Evaluation {
+            value: mean_value.weighted_average(),
+            min_depth: min_depth + 1,
+        };
+
+        if eval.min_depth.max_u8() > 2 {
+            self.heuristic.update(outcome.clone(), eval.value);
+        }
+
+        self.evaluation_cache.put(outcome, eval);
+
+        self.depth_limit += 1;
+        Ok(eval)
     }
 }

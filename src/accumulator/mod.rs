@@ -1,5 +1,6 @@
 // TODO rename to models
 
+use itertools::Itertools;
 use std::{
     cmp,
     collections::{hash_map::Entry, HashMap},
@@ -7,8 +8,6 @@ use std::{
     hash,
     ops::AddAssign,
 };
-
-use itertools::Itertools;
 
 pub mod prioritized;
 pub mod weighted;
@@ -38,7 +37,7 @@ where
     K: hash::Hash + cmp::Eq,
     V: AddAssign,
 {
-    pub fn add_to(&mut self, key: K, value: V) {
+    pub fn accumulate(&mut self, key: K, value: V) {
         match self.memory.entry(key) {
             Entry::Occupied(mut occupied_entry) => occupied_entry.get_mut().add_assign(value),
             Entry::Vacant(vacant_entry) => {

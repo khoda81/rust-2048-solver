@@ -1,20 +1,10 @@
 use criterion::{criterion_group, Bencher, BenchmarkId, Criterion};
-use rust_2048_solver::{
-    bots::mean_max::{
-        max_depth::MaxDepth as Bound, mean_max_2048::State, MeanMax, SearchConstraint,
-    },
-    game::{
-        self,
-        twenty_forty_eight::{board::Cells, TwentyFortyEight},
-    },
-};
+use rust_2048_solver::bots::mean_max::{max_depth::MaxDepth as Bound, MeanMax, SearchConstraint};
+use rust_2048_solver::game::twenty_forty_eight::TwentyFortyEight as State;
 
 fn run_search<const COLS: usize, const ROWS: usize>(
     b: &mut Bencher,
-    input: &(
-        game::twenty_forty_eight::TwentyFortyEight<COLS, ROWS>,
-        SearchConstraint,
-    ),
+    input: &(State<COLS, ROWS>, SearchConstraint),
 ) {
     let &(ref state, search_constraint) = input;
 
@@ -26,8 +16,8 @@ fn run_search<const COLS: usize, const ROWS: usize>(
 }
 
 pub fn bench_search_depth(c: &mut Criterion) {
-    let mut bench_search = |state: TwentyFortyEight<4, 4>, constraint: SearchConstraint| {
-        let parameter_display = format!("{:032x}-{constraint}", state.state.as_u128());
+    let mut bench_search = |state: State<4, 4>, constraint: SearchConstraint| {
+        let parameter_display = format!("{:032x}-{constraint}", state.cells.as_u128());
 
         c.bench_with_input(
             BenchmarkId::new("search", parameter_display),

@@ -2,9 +2,11 @@
 #![feature(portable_simd)]
 // TODO: Rename project to brickfish.
 
+use crate::game::{GameState, Outcome};
+
+pub mod accumulator;
 pub mod bots;
 pub mod game;
-
 pub mod utils;
 
 pub fn init_screen() {
@@ -58,15 +60,15 @@ pub fn measure_performance() -> f32 {
         let decision = ai.decide_until(&game, search_constraint);
         let act = match decision {
             Decision::Act(act) => act,
-            Decision::Resign => {
-                // The agent resigned!
-                break;
-            }
+            // The agent resigned!
+            Decision::Resign => break,
         };
 
-        if let Some(reward) = game.step(act.action) {
-            total_reward += reward;
-        } else {
+        let (reward, outcome) = game.outcome(act.action);
+        total_reward += reward;
+
+        game = outcome.collapse();
+        if game.is_terminal() {
             // The game has ended
             break;
         }

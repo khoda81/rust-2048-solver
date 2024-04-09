@@ -1,15 +1,12 @@
 pub mod fast_swipe;
 
-use rand::{
-    distributions::{Distribution, WeightedIndex},
-    seq::SliceRandom,
-};
+use crate::accumulator::weighted::Weighted;
+use std::fmt::Write as _;
+use std::marker::PhantomData;
 use std::num::NonZeroU8;
 use std::ops::{Deref, DerefMut};
-use std::simd::{cmp::SimdPartialEq, u8x16};
-use std::{array, fmt};
-use std::{fmt::Write as _, u128};
-use std::{hash::Hash, marker::PhantomData};
+use std::simd::{cmp::SimdPartialEq as _, u8x16};
+use std::{array, fmt, u128};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
@@ -19,13 +16,10 @@ pub enum Direction {
     Right,
 }
 
-impl Direction {
-    pub const ALL: &'static [Self] = &[
-        Direction::Up,
-        Direction::Down,
-        Direction::Left,
-        Direction::Right,
-    ];
+impl crate::game::Discrete for Direction {
+    fn iter() -> impl Iterator<Item = Self> {
+        Directions::default()
+    }
 }
 
 impl fmt::Display for Direction {
@@ -39,7 +33,64 @@ impl fmt::Display for Direction {
     }
 }
 
-pub type Weight = NonZeroU8;
+#[derive(Debug, Clone)]
+struct Directions {
+    pub current: Option<Direction>,
+}
+
+impl Default for Directions {
+    fn default() -> Self {
+        Directions {
+            current: Some(Direction::Up),
+        }
+    }
+}
+
+impl Iterator for Directions {
+    type Item = Direction;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = match self.current? {
+            Direction::Up => Some(Direction::Down),
+            Direction::Down => Some(Direction::Left),
+            Direction::Left => Some(Direction::Right),
+            Direction::Right => None,
+        };
+
+        std::mem::replace(&mut self.current, next)
+    }
+}
+
+// TODO: Implement From for {i32, u32, u8, i8, ...}
+#[derive(Debug, Clone, Copy)]
+pub struct Weight(NonZeroU8);
+impl Weight {
+    fn new(n: u8) -> Option<Self> {
+        NonZeroU8::new(n).map(Weight)
+    }
+}
+impl Deref for Weight {
+    type Target = NonZeroU8;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for Weight {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+impl From<Weight> for f32 {
+    fn from(value: Weight) -> Self {
+        f32::from(value.0.get())
+    }
+}
+impl From<Weight> for f64 {
+    fn from(value: Weight) -> Self {
+        f64::from(value.0.get())
+    }
+}
 pub type Cell = u8;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -61,40 +112,6 @@ impl<const COLS: usize, const ROWS: usize> Cells<COLS, ROWS> {
     pub fn count_empty(&self) -> usize {
         // NOTE: This is optimized to use SIMD.
         self.into_iter().flatten().filter(|&c| c == 0).count()
-    }
-
-    pub fn into_spawns(self) -> impl Iterator<Item = (Weight, Self)> {
-        Spawns::new(self)
-    }
-
-    pub fn iter_spawns_random(self) -> impl Iterator<Item = (Weight, Self)> {
-        // PERF: This can probably be optimized
-        let mut positions = Vec::with_capacity(16);
-        positions.extend(self.into_iter().enumerate().flat_map(|(i, row)| {
-            row.into_iter()
-                .enumerate()
-                .filter_map(move |(j, cell)| (cell == 0).then_some((i, j)))
-        }));
-
-        positions.shuffle(&mut rand::thread_rng());
-        positions.into_iter().flat_map(move |(i, j)| {
-            [(1, 2), (2, 1)].map(|(cell, weight)| {
-                let mut new_board = self;
-                new_board.cells[i][j] = cell;
-                (Weight::new(weight).unwrap(), new_board)
-            })
-        })
-    }
-
-    #[must_use]
-    pub fn random_spawn(&self) -> Self {
-        // PERF: Don't generate all the possible states beforehand
-        let options: Vec<_> = self.into_spawns().collect();
-        let weights = options.iter().map(|(weight, _board)| weight.get());
-        let dist = WeightedIndex::new(weights).unwrap();
-        let mut rng = rand::thread_rng();
-        let index = dist.sample(&mut rng);
-        options[index].1
     }
 
     pub fn swipe_left(&mut self) -> bool {
@@ -171,14 +188,9 @@ impl<const COLS: usize, const ROWS: usize> Cells<COLS, ROWS> {
     }
 
     pub fn transposed(self) -> Cells<ROWS, COLS> {
-        let mut transposed = [[0; ROWS]; COLS];
-        for row in 0..ROWS {
-            for col in 0..COLS {
-                transposed[col][row] = self[row][col];
-            }
-        }
+        use std::array::from_fn;
 
-        Cells::from_cells(transposed)
+        Cells::from_cells(from_fn(|row_idx| from_fn(|col_idx| self[col_idx][row_idx])))
     }
 
     pub fn columns(self) -> impl Iterator<Item = [Cell; ROWS]> {
@@ -263,9 +275,9 @@ impl<const COLS: usize, const ROWS: usize> fmt::Display for Cells<COLS, ROWS> {
     }
 }
 
-impl<const COLS: usize, const ROWS: usize> From<Cells<COLS, ROWS>> for [[Cell; COLS]; ROWS] {
-    fn from(board: Cells<COLS, ROWS>) -> Self {
-        *board
+impl<const COLS: usize, const ROWS: usize> From<[[Cell; COLS]; ROWS]> for Cells<COLS, ROWS> {
+    fn from(cells: [[Cell; COLS]; ROWS]) -> Self {
+        Cells { cells }
     }
 }
 
@@ -308,10 +320,17 @@ pub struct Spawns<const COLS: usize, const ROWS: usize> {
 }
 
 impl<const COLS: usize, const ROWS: usize> Spawns<COLS, ROWS> {
-    pub fn new(cells: Cells<COLS, ROWS>) -> Spawns<COLS, ROWS> {
+    pub fn new(cells: Cells<COLS, ROWS>) -> Self {
         let mut mask = Cells::new();
         mask.cells[0][0] = 2;
         Spawns { cells, mask }
+    }
+
+    pub fn empty() -> Self {
+        Spawns {
+            cells: Cells::new(),
+            mask: Cells::new(),
+        }
     }
 }
 
@@ -354,7 +373,10 @@ impl Spawns<4, 4> {
             if (zero_mask | cell_zero).all() {
                 // log::trace!("New:\n{result}");
                 // std::io::stdin().read_line(&mut String::new()).unwrap();
-                return weight.map(|w| (w, result));
+                return weight.map(|weight| Weighted {
+                    weight,
+                    value: result,
+                });
             }
 
             // log::trace!("Skipping, cells:\n{cells}", cells = self.cells);
@@ -368,7 +390,7 @@ impl Spawns<4, 4> {
 }
 
 impl<const COLS: usize, const ROWS: usize> Iterator for Spawns<COLS, ROWS> {
-    type Item = (Weight, Cells<COLS, ROWS>);
+    type Item = Weighted<Cells<COLS, ROWS>, Weight>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(spawns) = <dyn std::any::Any>::downcast_mut::<Spawns<4, 4>>(self) {
@@ -384,7 +406,8 @@ impl<const COLS: usize, const ROWS: usize> Iterator for Spawns<COLS, ROWS> {
 // TODO: Write a macro for creating boards
 #[cfg(test)]
 mod test_board {
-    use super::{Cells, Weight};
+    use super::{Cells, Spawns, Weight};
+    use crate::accumulator::weighted::Weighted;
     use itertools::Itertools;
     use std::sync::Once;
 
@@ -494,9 +517,7 @@ mod test_board {
         setup();
         for &cells in TEST_CASES.iter().flat_map(|(i, o)| [i, o]) {
             let cells = Cells::from_cells(cells);
-            let mut fast_spawns = cells
-                .into_spawns()
-                .sorted_by(|(_, cells1), (_, cells2)| cells1.cells.cmp(&cells2.cells));
+            let mut fast_spawns = Spawns::new(cells).sorted_by_key(|spawns| spawns.value.cells);
 
             let mut slow_spawns = cells
                 .into_iter()
@@ -510,25 +531,39 @@ mod test_board {
                     [(1, 2), (2, 1)].map(|(weight, cell)| {
                         let mut new_board = cells;
                         new_board.cells[i][j] = cell;
-                        (Weight::new(weight).unwrap(), new_board)
+                        Weighted {
+                            weight: Weight::new(weight).unwrap(),
+                            value: new_board,
+                        }
                     })
                 })
-                .sorted_by(|(_, cells1), (_, cells2)| cells1.cells.cmp(&cells2.cells));
+                .sorted_by_key(|spawns| spawns.value.cells);
 
-            for ((weight1, cells1), (weight2, cells2)) in (&mut fast_spawns).zip(&mut slow_spawns) {
+            for (fast, slow) in (&mut fast_spawns).zip(&mut slow_spawns) {
                 assert_eq!(
-                    cells1, cells2,
-                    "Fast cell:\n{cells1}\nis not equal to slow cell:\n{cells2}"
+                    fast.value, fast.value,
+                    "Fast cell:\n{}\nis not equal to slow cell:\n{}",
+                    fast.value, fast.value
                 );
-                assert_eq!(weight1, weight2, "Weights are not equal for: \n{cells1}");
+                assert_eq!(
+                    fast.value, slow.value,
+                    "Weights are not equal for: \n{}",
+                    fast.value
+                );
             }
 
-            if let Some((weight, cells)) = fast_spawns.next() {
-                panic!("Fast spawn yielded an extra spawn: weight={weight:?}\n{cells}");
+            if let Some(weighted) = fast_spawns.next() {
+                panic!(
+                    "Fast spawn yielded an extra spawn: weight={:?}\n{}",
+                    weighted.weight, weighted.value
+                );
             }
 
-            if let Some((weight, cells)) = slow_spawns.next() {
-                panic!("Slow spawn yielded an extra spawn: weight={weight:?}\n{cells}");
+            if let Some(weighted) = slow_spawns.next() {
+                panic!(
+                    "Slow spawn yielded an extra spawn: weight={:?}\n{}",
+                    weighted.weight, weighted.value
+                );
             }
         }
     }

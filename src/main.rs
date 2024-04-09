@@ -1,12 +1,8 @@
-use rust_2048_solver::{
-    bots::mean_max::{Decision, MeanMax, SearchConstraint},
-    game::twenty_forty_eight::TwentyFortyEight,
-    utils,
-};
-use std::{
-    io::Write,
-    time::{Duration, Instant},
-};
+use rust_2048_solver::bots::mean_max::{Decision, MeanMax, SearchConstraint};
+use rust_2048_solver::game::{twenty_forty_eight::TwentyFortyEight, GameState, Outcome};
+use rust_2048_solver::utils;
+use std::io::Write;
+use std::time::{Duration, Instant};
 
 fn main() {
     // TODO: Add command line arguments for deadline.
@@ -41,7 +37,7 @@ fn main() {
     }
 
     let mut game = TwentyFortyEight::<4, 4>::new();
-    println!("{}", game.state);
+    println!("{}", game.cells);
     loop {
         let search_duration = search_time_multiplier * base_search_time;
         let deadline = Instant::now() + search_duration;
@@ -52,7 +48,7 @@ fn main() {
 
         // utils::print_lookup(&ai);
         // utils::print_model(&ai.model);
-        utils::show_fill_percent(&ai);
+        utils::show_fill_percent(&ai.evaluation_cache);
 
         let act = match decision {
             Decision::Act(act) => act,
@@ -64,10 +60,11 @@ fn main() {
 
         log::info!("Action: {action}", action = act.action);
 
-        let reward = game.step(act.action);
-        println!("{}", game.state);
+        let (_reward, outcome) = game.outcome(act.action);
+        game = outcome.collapse();
+        println!("{}", game.cells);
 
-        if reward.is_none() {
+        if game.is_terminal() {
             // The game has ended
             break;
         }
@@ -90,7 +87,7 @@ fn main() {
         rust_2048_solver::end_screen();
     }
 
-    println!("{}", game.state);
+    println!("{}", game.cells);
     println!("Game Over!");
     // utils::print_lookup(&ai);
 }

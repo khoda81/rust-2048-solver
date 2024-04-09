@@ -1,9 +1,7 @@
-use super::{max_depth::MaxDepth, mean_max_2048, Evaluation, SearchConstraint};
-use crate::{
-    bots::model::{weighted::Weighted, Accumulator},
-    utils,
-};
-use std::time::Instant;
+use super::{max_depth::MaxDepth, Evaluation, SearchConstraint};
+use crate::accumulator::{weighted::Weighted, Accumulator};
+use crate::utils;
+use std::{fmt::Display, time::Instant};
 
 pub(super) struct SearchHandle(usize);
 
@@ -49,11 +47,11 @@ impl Logger {
         }
 
         let hit = Weighted::new(1.0);
-        self.cache_hit_chance_model.add_to(depth, hit);
+        self.cache_hit_chance_model.accumulate(depth, hit);
 
         if let MaxDepth::Bounded(_) = eval.min_depth {
             let hit_depth = Weighted::new(eval.min_depth.max_u8().into());
-            self.cache_hit_depth_model.add_to(depth, hit_depth);
+            self.cache_hit_depth_model.accumulate(depth, hit_depth);
         }
     }
 
@@ -63,7 +61,7 @@ impl Logger {
         }
 
         let miss = Weighted::new(0.0);
-        self.cache_hit_chance_model.add_to(depth, miss);
+        self.cache_hit_chance_model.accumulate(depth, miss);
     }
 
     pub(super) fn register_lookup_result(
@@ -77,32 +75,33 @@ impl Logger {
         }
     }
 
-    pub(super) fn start_search<S>(&mut self, _s: &S, constraint: SearchConstraint) -> SearchHandle {
+    pub(super) fn start_search<S>(&mut self, _s: &S, constraint: SearchConstraint) -> SearchHandle
+    where
+        S: crate::game::GameState,
+    {
         let start_time = Instant::now();
 
         #[allow(non_snake_case)]
         if self.print_size_of_critical_structs {
             let State = std::mem::size_of_val(_s);
             dbg!(State);
-            let Action = std::mem::size_of::<mean_max_2048::Action>();
+            let Action = std::mem::size_of::<S::Action>();
             dbg!(Action);
 
-            let Transition = std::mem::size_of::<
-                crate::game::Transition<S, mean_max_2048::Action, super::Value>,
-            >();
+            let Transition = std::mem::size_of::<super::Transition<S>>();
             dbg!(Transition);
 
             let Eval = std::mem::size_of::<super::Evaluation>();
             dbg!(Eval);
-            let OptEval = std::mem::size_of::<mean_max_2048::OptionEvaluation>();
-            dbg!(OptEval);
-            let EvalRst = std::mem::size_of::<mean_max_2048::EvaluationResult>();
-            dbg!(EvalRst);
-            let EvalAct = std::mem::size_of::<super::EvaluatedAction<mean_max_2048::Action>>();
+            let EvalAct = std::mem::size_of::<super::EvaluatedAction<S::Action>>();
             dbg!(EvalAct);
-            let Decision = std::mem::size_of::<mean_max_2048::Decision>();
+            let Decision = std::mem::size_of::<super::Decision<S>>();
             dbg!(Decision);
-            let DeciRst = std::mem::size_of::<mean_max_2048::DecisionResult>();
+            let OptEval = std::mem::size_of::<super::OptionEvaluation>();
+            dbg!(OptEval);
+            let EvalRst = std::mem::size_of::<super::EvaluationResult>();
+            dbg!(EvalRst);
+            let DeciRst = std::mem::size_of::<super::DecisionResult<S::Action>>();
             dbg!(DeciRst);
 
             self.print_size_of_critical_structs = false;
@@ -123,10 +122,10 @@ impl Logger {
         SearchHandle(self.search_log.len() - 1)
     }
 
-    pub(super) fn register_search_result(
+    pub(super) fn register_search_result<D: Display>(
         &mut self,
         &SearchHandle(search_id): &SearchHandle,
-        decision: &mean_max_2048::Decision,
+        decision: D,
     ) {
         if self.log_search_results {
             if let Some(search_info) = self.search_log.get(search_id) {
@@ -180,11 +179,13 @@ impl Logger {
             -(deadline - end_time).as_secs_f64()
         };
 
-        // BUG: Disabling outlier detection for now
+        // BUG: Disabling outlier detection for now.
+
         // let avg_miss_seconds = self.deadline_miss_model.weighted_average();
         // let miss_err = (avg_miss_seconds - miss_seconds).abs();
         // let outlier_threshold = Duration::from_micros(5);
         // BUG: This can be thrown off if a high miss happens at the start.
+
         // if miss_err.is_nan() || Duration::from_secs_f64(miss_err) <= outlier_threshold {
         self.deadline_miss_model += Weighted::new(miss_seconds);
         // } else {

@@ -1,78 +1,143 @@
-type Reward = f32;
-type Action = Direction;
-
 pub mod board;
 
-use super::Transition;
+use super::{DiscreteDistribution, GameState, Outcome};
+use crate::accumulator::weighted::Weighted;
 use board::{Cell, Cells, Direction};
-use std::fmt::{self, Display};
+use rand::distributions::{Distribution as _, WeightedError, WeightedIndex};
+use std::fmt::{self, Debug, Display};
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+// TODO: Rename this to State?
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct TwentyFortyEight<const COLS: usize, const ROWS: usize> {
-    pub state: Cells<COLS, ROWS>,
+    pub cells: Cells<COLS, ROWS>,
 }
 
 impl<const COLS: usize, const ROWS: usize> TwentyFortyEight<COLS, ROWS> {
-    pub(crate) const ACTIONS: &'static [Action] = Action::ALL;
+    // pub(crate) const ACTIONS: &'static [Action] = Action::ALL;
 
     pub fn new() -> Self {
-        Self::from_state(Cells::new().random_spawn())
+        let cells = Cells::new();
+        // PERF: Don't generate all the possible states beforehand
+        let options: Vec<_> = board::Spawns::new(cells).collect();
+        let weights = options.iter().map(|weighted| weighted.weight.get());
+        let dist = WeightedIndex::new(weights).unwrap();
+        let mut rng = rand::thread_rng();
+        let index = dist.sample(&mut rng);
+
+        Self::from_cells(options[index].value)
     }
 
-    pub fn from_cells(cells: impl Into<[[Cell; COLS]; ROWS]>) -> Self {
-        Self::from_state(Cells::from_cells(cells))
+    // pub fn from_cells(cells: impl Into<[[Cell; COLS]; ROWS]>) -> Self {
+    //     Self::from_cells(Cells::from_cells(cells))
+    // }
+
+    pub fn from_cells<C>(cells: C) -> Self
+    where
+        Cells<COLS, ROWS>: From<C>,
+    {
+        TwentyFortyEight {
+            cells: Cells::from(cells),
+        }
     }
+}
 
-    pub fn from_state(state: Cells<COLS, ROWS>) -> Self {
-        TwentyFortyEight { state }
-    }
+impl<const ROWS: usize, const COLS: usize> GameState for TwentyFortyEight<COLS, ROWS> {
+    type Outcome = TwentyFortyEightOutcome<COLS, ROWS>;
+    type Action = Direction;
+    type Reward = f32;
 
-    pub fn step(&mut self, action: Action) -> Option<Reward> {
-        let Transition { reward, next, .. } = self.half_step(action)?;
-
-        self.state = next.random_spawn();
-
-        (!self.terminal()).then_some(reward)
-    }
-
-    // TODO: Add a method that return an iterator of potential future states (with respective weights), then deprecate this.
-    pub fn half_step(
-        self,
-        action: Action,
-    ) -> Option<Transition<Action, Reward, Cells<COLS, ROWS>>> {
-        let mut state = self.state;
-        if !state.swipe(action) {
-            return None;
+    fn outcome(self, action: Self::Action) -> (Self::Reward, Self::Outcome) {
+        let mut cells = self.cells;
+        if !cells.swipe(action) {
+            // This action didn't change the board, so is not a valid action.
+            return (
+                0.0,
+                TwentyFortyEightOutcome {
+                    cells: board::Cells::new(),
+                },
+            );
         }
 
-        // TODO: Replace with the actual reward.
+        // TODO: Calculate the actual reward.
         let reward = 1.0;
 
-        Some(Transition {
-            action,
-            reward,
-            next: state,
-        })
+        (reward, TwentyFortyEightOutcome { cells })
     }
 
-    pub fn terminal(&self) -> bool {
-        self.state.is_lost()
-    }
-
-    pub fn transitions(
-        &self,
-    ) -> impl Iterator<Item = Transition<Action, Reward, Cells<COLS, ROWS>>> + '_ {
-        let possible_actions = (!self.terminal())
-            .then_some(Self::ACTIONS)
-            .into_iter()
-            .flatten();
-
-        possible_actions.filter_map(|action| self.half_step(*action))
+    fn is_terminal(&self) -> bool {
+        self.cells.is_lost()
     }
 }
 
 impl<const ROWS: usize, const COLS: usize> Display for TwentyFortyEight<COLS, ROWS> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.state.fmt(f)
+        Display::fmt(&self.cells, f)
+    }
+}
+
+// TODO: Rename this to Outcome?
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TwentyFortyEightOutcome<const COLS: usize, const ROWS: usize> {
+    pub(crate) cells: Cells<COLS, ROWS>,
+}
+
+impl<const COLS: usize, const ROWS: usize> Display for TwentyFortyEightOutcome<COLS, ROWS> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.cells, f)
+    }
+}
+
+impl<const COLS: usize, const ROWS: usize> IntoIterator for TwentyFortyEightOutcome<COLS, ROWS> {
+    type Item = Weighted<TwentyFortyEight<COLS, ROWS>, board::Weight>;
+    type IntoIter = std::iter::Map<
+        board::Spawns<COLS, ROWS>,
+        fn(<board::Spawns<COLS, ROWS> as Iterator>::Item) -> Self::Item,
+    >;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let spawns = if self.cells == Cells::new() {
+            board::Spawns::empty()
+        } else {
+            board::Spawns::new(self.cells)
+        };
+
+        spawns.map(|weighted| weighted.map(TwentyFortyEight::from_cells))
+    }
+}
+
+impl<const COLS: usize, const ROWS: usize> DiscreteDistribution
+    for TwentyFortyEightOutcome<COLS, ROWS>
+{
+    type T = TwentyFortyEight<COLS, ROWS>;
+    type Weight = board::Weight;
+}
+
+impl<const COLS: usize, const ROWS: usize> Outcome<TwentyFortyEight<COLS, ROWS>>
+    for TwentyFortyEightOutcome<COLS, ROWS>
+{
+    fn collapse(self) -> TwentyFortyEight<COLS, ROWS> {
+        let into_iter = self.clone().into_iter();
+        let (min, _max) = into_iter.size_hint();
+        let mut weights = Vec::with_capacity(min);
+        let mut items = Vec::with_capacity(min);
+
+        for weighted in into_iter {
+            weights.push(weighted.weight.get());
+            items.push(weighted.value);
+        }
+
+        let weighted_index = match WeightedIndex::new(weights) {
+            Ok(index) => index,
+            Err(WeightedError::NoItem) => return TwentyFortyEight::from_cells(Cells::new()),
+            Err(err) => panic!(
+                "Failed to collapse outcome: {err}\noutcome:\n{}",
+                &self.cells
+            ),
+        };
+
+        let idx = weighted_index.sample(&mut rand::thread_rng());
+
+        // TODO: why do we need to move out of this?
+        items[idx].clone()
     }
 }

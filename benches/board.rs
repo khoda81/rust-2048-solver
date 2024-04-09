@@ -1,11 +1,10 @@
 use criterion::{criterion_group, BenchmarkId, Criterion, Throughput};
 use rand::seq::SliceRandom;
-use rust_2048_solver::game::twenty_forty_eight::board::{Cells, Direction};
 use rust_2048_solver::game::twenty_forty_eight::TwentyFortyEight;
+use rust_2048_solver::game::{Discrete, GameState, Outcome};
 use std::hash::{self, Hash as _};
 
-type State = Cells<4, 4>;
-
+type State = TwentyFortyEight<4, 4>;
 fn generate_states(count: usize) -> Vec<State> {
     #[rustfmt::skip]
     let starting_state = State::from_cells([
@@ -18,14 +17,12 @@ fn generate_states(count: usize) -> Vec<State> {
     let mut states = vec![starting_state];
     let mut rng = rand::thread_rng();
     while states.len() < count {
-        let state = *states.choose(&mut rng).unwrap();
-        let game = TwentyFortyEight { state };
-        let iter = game
-            .transitions()
-            .flat_map(|transition| transition.next.into_spawns())
-            .map(|(_weight, new_state)| new_state);
+        let state = states.choose(&mut rng).unwrap().clone();
 
-        states.extend(iter);
+        for action in <State as GameState>::Action::iter() {
+            let (_reward, outcome) = state.clone().outcome(action);
+            states.extend(outcome.into_iter().map(|weighted| weighted.value));
+        }
     }
 
     states.truncate(count);
@@ -54,17 +51,17 @@ fn bench_hash(c: &mut Criterion) {
 }
 
 fn bench_board_swipe(c: &mut Criterion) {
-    let mut board = State::new();
+    let mut state = State::new();
 
     c.bench_function("updates", |b| {
         b.iter(|| {
-            board.swipe(Direction::Up);
-            board.swipe(Direction::Right);
-            board.swipe(Direction::Down);
-            board.swipe(Direction::Left);
+            for action in <State as GameState>::Action::iter() {
+                let (_reward, outcome) = state.clone().outcome(action);
+                state = outcome.collapse();
+            }
 
-            if board.is_lost() {
-                board = Cells::new();
+            if state.is_terminal() {
+                state = State::new();
             }
         })
     });
