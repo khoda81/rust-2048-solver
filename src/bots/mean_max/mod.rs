@@ -193,6 +193,27 @@ struct Transition<G: game::GameState> {
 
 impl<G, H> MeanMax<G, H>
 where
+    G: game::GameState,
+    G::Outcome: Hash + cmp::Eq,
+{
+    fn cached_evaluation(&mut self, outcome: &G::Outcome) -> OptionEvaluation {
+        let mut cached_eval = self.evaluation_cache.get(outcome).copied();
+
+        if let Some(eval) = cached_eval.as_mut() {
+            if eval.min_depth < self.depth_limit {
+                cached_eval = None;
+            }
+        }
+
+        self.logger
+            .register_lookup_result(cached_eval.as_ref(), self.depth_limit);
+
+        cached_eval
+    }
+}
+
+impl<G, H> MeanMax<G, H>
+where
     G: game::GameState + Clone + Display,
     G::Outcome: game::DiscreteDistribution<T = G> + Hash + cmp::Eq + Clone + Display,
     G::Action: game::Discrete + Clone + Display,
@@ -251,25 +272,16 @@ where
     }
 
     pub fn evaluate_state(&mut self, state: &G) -> EvaluationResult {
-        // TODO: Try deadline.elapsed?
-
-        if self
-            .deadline
-            .is_some_and(|deadline| std::time::Instant::now() >= deadline)
-        {
+        let passed = |instant: Instant| !instant.elapsed().is_zero();
+        if self.deadline.is_some_and(passed) {
             return Err(SearchError::TimeOut);
         }
 
-        let eval = self.make_decision(state)?.eval();
-        log::trace!("Back from make_decision to eval_state.");
-
-        Ok(eval)
+        self.make_decision(state).map(|decision| decision.eval())
     }
 
     pub fn make_decision(&mut self, state: &G) -> DecisionResult<<G as game::GameState>::Action> {
         let mut best_decision = Decision::Resign;
-
-        log::trace!("Making decision for:\n{state}");
 
         for action in <G::Action as game::Discrete>::iter() {
             log::trace!("Trying action: {action}");
@@ -283,39 +295,18 @@ where
             };
 
             let new_decision = Decision::Act(EvaluatedAction { eval, action });
-            best_decision = best_decision.max_by_eval(new_decision)
+            best_decision = best_decision.max_by_eval(new_decision);
         }
-
-        log::trace!("Made decision={best_decision} for:\n{state}");
 
         Ok(best_decision)
     }
 
-    fn cached_evaluation(&mut self, outcome: &G::Outcome) -> OptionEvaluation {
-        let mut cached_eval = self.evaluation_cache.get(outcome).copied();
-
-        if let Some(eval) = cached_eval.as_mut() {
-            if eval.min_depth < self.depth_limit {
-                cached_eval = None;
-            }
-        }
-
-        self.logger
-            .register_lookup_result(cached_eval.as_ref(), self.depth_limit);
-
-        cached_eval
-    }
-
     fn evaluate_outcome(&mut self, outcome: G::Outcome) -> EvaluationResult {
-        log::trace!("Evaluating:\n{outcome}");
-
         if outcome.clone().into_iter().next().is_none() {
-            log::trace!("Returning as terminal");
             return Ok(Evaluation::TERMINAL);
         }
 
         if let Some(evaluation) = self.cached_evaluation(&outcome) {
-            log::trace!("Returning from cache: {evaluation}");
             return Ok(evaluation);
         }
 
@@ -328,23 +319,19 @@ where
                     min_depth: max_depth::MaxDepth::new(0),
                 };
 
-                log::trace!("Hit depth limit: {evaluation}");
-
                 return Ok(evaluation);
             }
         };
 
-        let mut mean_value = Fraction::default();
+        let mut mean_value = Fraction::<Value, Value>::default();
         let mut min_depth = max_depth::MaxDepth::Unlimited;
 
         for weighted in outcome.clone() {
             let eval = self.evaluate_state(&weighted.value)?;
 
             min_depth = std::cmp::min(eval.min_depth, min_depth);
-            mean_value += Weighted::new(eval.value, f32::from(weighted.weight)).to_fraction();
+            mean_value += Weighted::new(eval.value, weighted.weight.into()).to_fraction();
         }
-
-        log::trace!("Evaluation done!");
 
         let eval = Evaluation {
             value: mean_value.evaluate(),

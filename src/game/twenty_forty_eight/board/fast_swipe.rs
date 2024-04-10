@@ -33,12 +33,7 @@ pub fn swipe_left_4_fast(mut bytes: u32) -> u32 {
     if (bytes ^ (bytes >> 8)) & 0xFF == 0 {
         bytes = (bytes >> 8) + 1;
     }
-    // // Undo merge if block[0] is empty (meaning all blocks were zero)
-    // if bytes & 0xFF == 1 {
-    //     bytes -= 1;
-    // }
 
-    // println!("merge1: 0x{bytes:08x} ({:?})", bytes.to_be_bytes());
     // Early return if block[1] is empty (meaning the rest of blocks are zero)
     if bytes & 0xFF00 == 0 {
         return bytes;
@@ -48,27 +43,17 @@ pub fn swipe_left_4_fast(mut bytes: u32) -> u32 {
         bytes = (bytes >> 8) & !0xFF | (bytes & 0xFF);
         bytes += 1 << 8;
     }
-    // // Undo Merge if block[1] is empty (meaning the rest of blocks are zero)
-    // if bytes & 0xFFFF00 == (1 << 8) {
-    //     bytes -= 1 << 8;
-    // }
 
     // Early return if block[1] is empty (meaning the rest of blocks are zero)
     if bytes & 0xFF0000 == 0 {
         return bytes;
     }
-    // println!("merge2: 0x{bytes:08x} ({:?})", bytes.to_be_bytes());
+
     // Merge block[2] and block[3] if possible
     if (bytes ^ (bytes >> 8)) & 0xFF0000 == 0 {
         bytes = (bytes >> 8) & !0xFFFF | (bytes & 0xFFFF);
         bytes += 1 << 16;
     }
-    // // Undo Merge if block[2] is empty (meaning the rest of blocks are zero)
-    // if bytes & 0xFF0000 == (1 << 16) {
-    //     bytes -= 1 << 16;
-    // }
-
-    // println!("merge3: 0x{bytes:08x} ({:?})", bytes.to_be_bytes());
 
     bytes
 }
@@ -112,20 +97,14 @@ impl SwipeResult {
 pub fn swipe_left<const SIZE: usize>(cells: &mut [u8; SIZE]) -> bool {
     // TODO: Try this fast implementation for swipe_right.
 
-    // if let [a, b, c, d] = cells[..] {
-    //     let swiped_cells = swipe_left_4_fast(u32::from_le_bytes([a, b, c, d])).to_le_bytes();
-    //
-    //     let mut new_cells = [0; SIZE];
-    //     new_cells
-    //         .iter_mut()
-    //         .zip(swiped_cells)
-    //         .for_each(|(arr, cell)| *arr = cell);
-    //
-    //     let changed = cells != &new_cells;
-    //     *cells = new_cells;
-    //
-    //     return changed;
-    // }
+    if let [a, b, c, d] = cells[..] {
+        let new_cells = swipe_left_4_fast(u32::from_le_bytes([a, b, c, d])).to_le_bytes();
+
+        // Convert slice to array
+        let new_cells = std::array::from_fn(|i| new_cells[i]);
+        let old_cells = std::mem::replace(cells, new_cells);
+        return old_cells.ne(cells);
+    }
 
     let mut last_pos = 0;
     let mut result = SwipeResult::Unchanged;
