@@ -1,5 +1,6 @@
 use super::{max_depth::MaxDepth, Evaluation, SearchConstraint};
-use crate::accumulator::{fraction::Fraction, Accumulator};
+use crate::accumulator::fraction::{Weighted, WeightedAverage};
+use crate::accumulator::Accumulator;
 use crate::utils;
 use std::{fmt::Display, time::Instant};
 
@@ -12,9 +13,9 @@ pub struct SearchInfo {
 }
 
 pub struct Logger {
-    pub cache_hit_chance_model: Accumulator<MaxDepth, Fraction<f64, f64>>,
-    pub cache_hit_depth_model: Accumulator<MaxDepth, Fraction<f64, f64>>,
-    pub deadline_miss_model: Fraction<f64, f64>,
+    pub cache_hit_chance_model: Accumulator<MaxDepth, WeightedAverage<f64, f64>>,
+    pub cache_hit_depth_model: Accumulator<MaxDepth, WeightedAverage<f64, f64>>,
+    pub deadline_miss_model: WeightedAverage<f64, f64>,
     pub search_log: Vec<SearchInfo>,
 
     // Config
@@ -30,7 +31,7 @@ impl Logger {
         Logger {
             cache_hit_chance_model: Accumulator::new(),
             cache_hit_depth_model: Accumulator::new(),
-            deadline_miss_model: Fraction::default(),
+            deadline_miss_model: WeightedAverage::default(),
             search_log: Vec::new(),
 
             log_search_results: false,
@@ -46,11 +47,11 @@ impl Logger {
             return;
         }
 
-        let hit = Fraction::new(1.0);
+        let hit = Weighted::<f64, f64>::new(1.0);
         self.cache_hit_chance_model.accumulate(depth, hit);
 
         if let MaxDepth::Bounded(_) = eval.min_depth {
-            let hit_depth = Fraction::new(eval.min_depth.max_u8().into());
+            let hit_depth = Weighted::<f64, f64>::new(eval.min_depth.max_u8().into());
             self.cache_hit_depth_model.accumulate(depth, hit_depth);
         }
     }
@@ -60,7 +61,7 @@ impl Logger {
             return;
         }
 
-        let miss = Fraction::new(0.0);
+        let miss = Weighted::<f64, f64>::new(0.0);
         self.cache_hit_chance_model.accumulate(depth, miss);
     }
 
@@ -168,10 +169,8 @@ impl Logger {
             return;
         }
 
-        let deadline = match search_info.constraint.deadline {
-            Some(deadline) => deadline,
-            _ => return,
-        };
+        let deadline = search_info.constraint.deadline;
+        let Some(deadline) = deadline else { return };
 
         let miss_seconds = if deadline <= end_time {
             (end_time - deadline).as_secs_f64()
@@ -187,7 +186,7 @@ impl Logger {
         // BUG: This can be thrown off if a high miss happens at the start.
 
         // if miss_err.is_nan() || Duration::from_secs_f64(miss_err) <= outlier_threshold {
-        self.deadline_miss_model += Fraction::new(miss_seconds);
+        self.deadline_miss_model += Weighted::<f64, f64>::new(miss_seconds);
         // } else {
         //     eprintln!(
         //         "Ignoring miss since it has a high error ({miss_duration:.1?}>{outlier_threshold:.1?})",
@@ -195,10 +194,11 @@ impl Logger {
         //     );
         // }
 
+        // TODO: We should probably be using chrono
         let miss_duration = utils::get_signed_duration(miss_seconds);
         println!("Deadline missed by {miss_duration:?}");
 
-        let avg_miss_seconds = self.deadline_miss_model.evaluate();
+        let avg_miss_seconds = self.deadline_miss_model.clone().evaluate();
         let avg_miss = utils::get_signed_duration(avg_miss_seconds);
         println!("Avg miss: {avg_miss:?}");
     }

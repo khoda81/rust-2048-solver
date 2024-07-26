@@ -1,4 +1,3 @@
-#![feature(slice_flatten)]
 #![feature(portable_simd)]
 // TODO: Rename project to brickfish.
 

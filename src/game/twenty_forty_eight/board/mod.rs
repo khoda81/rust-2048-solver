@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroU8;
 use std::ops::{Deref, DerefMut};
 use std::simd::{cmp::SimdPartialEq as _, u8x16};
-use std::{array, fmt, u128};
+use std::{array, fmt};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
@@ -206,13 +206,13 @@ impl<const COLS: usize, const ROWS: usize> Cells<COLS, ROWS> {
 impl Cells<4, 4> {
     pub fn as_u128(self) -> u128 {
         // SAFETY: we know the slice is 16 bytes and has the same layout
-        let bytes = unsafe { std::mem::transmute(self.cells) };
+        let bytes = unsafe { std::mem::transmute::<[[u8; 4]; 4], [u8; 16]>(self.cells) };
         u128::from_le_bytes(bytes)
     }
 
     fn as_simd(self) -> u8x16 {
         // SAFETY: we know the slice is 16 bytes and has the same layout
-        let bytes = unsafe { std::mem::transmute(self.cells) };
+        let bytes = unsafe { std::mem::transmute::<[[u8; 4]; 4], [u8; 16]>(self.cells) };
         u8x16::from_array(bytes)
     }
 }
@@ -224,7 +224,7 @@ impl<const COLS: usize, const ROWS: usize> std::hash::Hash for Cells<COLS, ROWS>
             return cells.as_u128().hash(state);
         }
 
-        let cells = self.cells.flatten();
+        let cells = self.cells.as_flattened();
         let chunks = cells.chunks_exact(8);
 
         let remainder = chunks.remainder();
@@ -348,18 +348,17 @@ impl Spawns<4, 4> {
             let has_1 = (simd_masks & u8x16::splat(1)) != u8x16::splat(0);
             let weight = Weight::new(if has_1 { 2 } else { 1 });
 
-            let result = (simd_cells | simd_masks).to_array();
+            let new_cells = (simd_cells | simd_masks).to_array();
 
             // SAFETY: A [Cell; 16] has the same layout as [[Cell; 4]; 4].
-            let result: [[Cell; 4]; 4] = unsafe { std::mem::transmute(result) };
-            let result = Cells::from_cells(result);
+            let new_cells: [[Cell; 4]; 4] = unsafe { std::mem::transmute(new_cells) };
+            let new_cells = Cells::from_cells(new_cells);
 
             let zero_mask = simd_masks.simd_eq(u8x16::splat(0));
             let last_element_zero = zero_mask.test(15);
-
-            let sub = if last_element_zero { 0 } else { 1 };
-            let simd_masks =
-                simd_masks - u8x16::from_array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, sub]);
+            let mut sub_arr = [0; 16];
+            sub_arr[15] = if last_element_zero { 0 } else { 1 };
+            let simd_masks = simd_masks - u8x16::from_array(sub_arr);
 
             // Rotate bytes to the right
             let mask_bytes = simd_masks.rotate_elements_right::<1>();
@@ -370,7 +369,8 @@ impl Spawns<4, 4> {
 
             let cell_zero = simd_cells.simd_eq(u8x16::splat(0));
             if (zero_mask | cell_zero).all() {
-                return weight.map(|weight| Weighted::new(result, weight));
+                let value = new_cells;
+                return weight.map(|weight| Weighted { value, weight });
             }
         }
 
@@ -522,7 +522,7 @@ mod test_board {
                     [(1, 2), (2, 1)].map(|(weight, cell)| {
                         let mut new_board = cells;
                         new_board.cells[i][j] = cell;
-                        Weighted::new(new_board, Weight::new(weight).unwrap())
+                        Weighted::new_weighted(new_board, Weight::new(weight).unwrap())
                     })
                 })
                 .sorted_by_key(|spawns| spawns.value.cells);

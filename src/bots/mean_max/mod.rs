@@ -2,7 +2,7 @@ pub mod logger;
 pub mod max_depth;
 pub mod mean_max_2048;
 
-use crate::accumulator::fraction::{Fraction, Weighted};
+use crate::accumulator::fraction::{Weighted, WeightedAverage};
 use crate::{bots::heuristic, game, utils};
 use std::fmt::Debug;
 use std::{cmp, fmt::Display, hash::Hash, time::Instant};
@@ -39,7 +39,7 @@ impl Display for Evaluation {
         }
 
         let precision = f.precision().unwrap_or(2);
-        write!(f, " -> {value:.*}", precision, value = self.value,)?;
+        write!(f, " -> {value:.*}", precision, value = self.value)?;
 
         Ok(())
     }
@@ -174,7 +174,6 @@ pub struct MeanMax<Game: game::GameState, Heuristic> {
     pub deadline: Option<Instant>,
     pub depth_limit: max_depth::MaxDepth,
     pub evaluation_cache: lru::LruCache<Game::Outcome, Evaluation>,
-    // pub model: Accumulator<P, Weighted<f64>>,
     pub heuristic: Heuristic,
     pub logger: logger::Logger,
 }
@@ -272,19 +271,19 @@ where
     }
 
     pub fn evaluate_state(&mut self, state: &G) -> EvaluationResult {
-        let passed = |instant: Instant| !instant.elapsed().is_zero();
-        if self.deadline.is_some_and(passed) {
-            return Err(SearchError::TimeOut);
-        }
+        let in_the_past = |instant: Instant| !instant.elapsed().is_zero();
 
-        self.make_decision(state).map(|decision| decision.eval())
+        if self.deadline.is_some_and(in_the_past) {
+            Err(SearchError::TimeOut)
+        } else {
+            self.make_decision(state).map(|decision| decision.eval())
+        }
     }
 
     pub fn make_decision(&mut self, state: &G) -> DecisionResult<<G as game::GameState>::Action> {
         let mut best_decision = Decision::Resign;
 
         for action in <G::Action as game::Discrete>::iter() {
-            log::trace!("Trying action: {action}");
             let (reward, outcome) = state.clone().outcome(action.clone());
 
             // TODO: Make this iterative instead of recursive.
@@ -323,14 +322,17 @@ where
             }
         };
 
-        let mut mean_value = Fraction::<Value, Value>::default();
+        let mut mean_value = WeightedAverage::<Value, Value>::default();
         let mut min_depth = max_depth::MaxDepth::Unlimited;
 
         for weighted in outcome.clone() {
             let eval = self.evaluate_state(&weighted.value)?;
 
             min_depth = std::cmp::min(eval.min_depth, min_depth);
-            mean_value += Weighted::new(eval.value, weighted.weight.into()).to_fraction();
+            mean_value += Weighted {
+                value: eval.value,
+                weight: f32::from(weighted.weight),
+            };
         }
 
         let eval = Evaluation {

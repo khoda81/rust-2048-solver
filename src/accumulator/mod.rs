@@ -1,13 +1,7 @@
-// TODO rename to models
-
 use itertools::Itertools;
-use std::{
-    cmp,
-    collections::{hash_map::Entry, HashMap},
-    fmt::{Display, Write},
-    hash,
-    ops::AddAssign,
-};
+use std::collections::HashMap;
+use std::fmt::{Display, Write};
+use std::{cmp, hash, ops};
 
 pub mod fraction;
 pub mod prioritized;
@@ -30,20 +24,13 @@ impl<K, V> Accumulator<K, V> {
             memory: HashMap::new(),
         }
     }
-}
 
-impl<K, V> Accumulator<K, V>
-where
-    K: hash::Hash + cmp::Eq,
-    V: AddAssign,
-{
-    pub fn accumulate(&mut self, key: K, value: V) {
-        match self.memory.entry(key) {
-            Entry::Occupied(mut occupied_entry) => occupied_entry.get_mut().add_assign(value),
-            Entry::Vacant(vacant_entry) => {
-                vacant_entry.insert(value);
-            }
-        }
+    pub fn accumulate<T>(&mut self, key: K, value: T)
+    where
+        K: hash::Hash + cmp::Eq,
+        V: Default + ops::AddAssign<T>,
+    {
+        self.memory.entry(key).or_default().add_assign(value)
     }
 }
 
