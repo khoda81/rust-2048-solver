@@ -1,187 +1,43 @@
 pub mod logger;
 pub mod max_depth;
 pub mod mean_max_2048;
+pub mod searcher;
 
-use crate::accumulator::fraction::{Weighted, WeightedAverage};
-use crate::{bots::heuristic, game, utils};
-use std::fmt::Debug;
-use std::{cmp, fmt::Display, hash::Hash, time::Instant};
-use thiserror::Error;
+use crate::game;
+use std::collections::HashSet;
+use std::fmt::{Debug, Display};
+use std::hash::Hash;
+use std::marker::PhantomData;
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread::JoinHandle;
 
-pub type Value = f32;
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
-pub struct Evaluation {
-    /// Expected value of the given state.
-    pub value: Value,
-
-    /// Minimum depth of searched tree ([max_depth::MaxDepth::Unlimited] means this is the eval of a full search tree).
-    pub min_depth: max_depth::MaxDepth,
+struct Task<Game> {
+    task_id: usize,
+    state: Game,
+    search_constraint: searcher::SearchConstraint,
 }
 
-impl Evaluation {
-    const TERMINAL: Self = Evaluation {
-        value: 0.0,
-        min_depth: max_depth::MaxDepth::Unlimited,
-    };
-
-    #[deprecated = "use `self.depth` instead"]
-    pub fn fits_depth_bound(&self, bound: max_depth::MaxDepth) -> bool {
-        self.min_depth >= bound
-    }
+struct SearchResult<Game: game::GameState> {
+    task_id: usize,
+    state: Game,
+    result: searcher::DecisionResult<Game::Action>,
 }
 
-impl Display for Evaluation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.min_depth {
-            max_depth::MaxDepth::Bounded(_) => write!(f, "{:2}", self.min_depth)?,
-            max_depth::MaxDepth::Unlimited => write!(f, "complete")?,
-        }
-
-        let precision = f.precision().unwrap_or(2);
-        write!(f, " -> {value:.*}", precision, value = self.value)?;
-
-        Ok(())
-    }
-}
-
-#[must_use]
-#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
-pub struct EvaluatedAction<A> {
-    pub eval: Evaluation,
-    pub action: A,
-}
-
-impl<A: Display> Display for EvaluatedAction<A> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: ", self.action)?;
-        Display::fmt(&self.eval, f)
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
-pub enum Decision<A> {
-    Act(EvaluatedAction<A>),
-    Resign,
-}
-
-impl<A> Decision<A> {
-    pub fn eval(&self) -> Evaluation {
-        match self {
-            Decision::Act(act) => act.eval,
-            Decision::Resign => Evaluation::TERMINAL,
-        }
-    }
-
-    fn max_by_eval(self, other: Self) -> Self {
-        std::cmp::max_by(self, other, |a, b| {
-            a.eval()
-                .partial_cmp(&b.eval())
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
-    }
-}
-
-impl<A: Display> Display for Decision<A> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Decision::Act(act) => write!(f, "{act}"),
-            Decision::Resign => write!(f, "resign"),
-        }
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum SearchError {
-    #[error("search time exceeded the deadline")]
-    TimeOut,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SearchConstraint {
-    pub deadline: Option<Instant>,
-    pub max_depth: max_depth::MaxDepth,
-}
-
-impl SearchConstraint {
-    pub fn new() -> Self {
-        Self {
-            deadline: None,
-            max_depth: max_depth::MaxDepth::Unlimited,
-        }
-    }
-
-    pub fn check_deadline(&self) -> bool {
-        match self.deadline {
-            Some(deadline) => Instant::now() < deadline,
-            None => true,
-        }
-    }
-
-    pub fn has_lower_depth(&self) -> bool {
-        (self.max_depth - 1).is_some()
-    }
-
-    #[must_use]
-    pub fn with_deadline(mut self, deadline: Instant) -> Self {
-        self.deadline = Some(deadline);
-        self
-    }
-
-    #[must_use]
-    pub fn with_max_depth(mut self, max_depth: max_depth::MaxDepth) -> Self {
-        self.max_depth = max_depth;
-        self
-    }
-}
-
-impl Default for SearchConstraint {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Display for SearchConstraint {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut is_empty = true;
-        if let Some(deadline) = self.deadline {
-            let duration = deadline.duration_since(std::time::Instant::now());
-
-            write!(f, "for {}", utils::HumanDuration(duration))?;
-            is_empty = false;
-        }
-
-        match self.max_depth {
-            max_depth::MaxDepth::Bounded(_) => {
-                if !is_empty {
-                    f.write_str(", ")?;
-                }
-                write!(f, "{} levels deep", self.max_depth)?;
-            }
-            max_depth::MaxDepth::Unlimited => {
-                if is_empty {
-                    write!(f, "for ever")?;
-                }
-            }
-        };
-
-        Ok(())
-    }
+pub struct SearcherThread<Game: game::GameState> {
+    thread: JoinHandle<()>,
+    task_sender: mpsc::Sender<Task<Game>>,
 }
 
 // TODO: Add concurrency to cache and search
 pub struct MeanMax<Game: game::GameState, Heuristic> {
-    pub deadline: Option<Instant>,
-    pub depth_limit: max_depth::MaxDepth,
-    pub evaluation_cache: lru::LruCache<Game::Outcome, Evaluation>,
-    pub heuristic: Heuristic,
-    pub logger: logger::Logger,
-}
+    pub logger: Arc<Mutex<logger::Logger>>,
+    heuristic: PhantomData<Heuristic>,
 
-// NOTE: This is equivalent to Decision
-pub type OptionEvaluation = Option<Evaluation>;
-pub type EvaluationResult = Result<Evaluation, SearchError>;
-pub type DecisionResult<A> = Result<Decision<A>, SearchError>;
+    //evaluation_cache: lru::LruCache<Game::Outcome, Evaluation>,
+    pub searcher_threads: Vec<SearcherThread<Game>>,
+    result_receiver: mpsc::Receiver<SearchResult<Game>>,
+    result_sender: mpsc::Sender<SearchResult<Game>>,
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 struct Transition<G: game::GameState> {
@@ -192,161 +48,159 @@ struct Transition<G: game::GameState> {
 
 impl<G, H> MeanMax<G, H>
 where
-    G: game::GameState,
-    G::Outcome: Hash + cmp::Eq,
-{
-    fn cached_evaluation(&mut self, outcome: &G::Outcome) -> OptionEvaluation {
-        let mut cached_eval = self.evaluation_cache.get(outcome).copied();
-
-        if let Some(eval) = cached_eval.as_mut() {
-            if eval.min_depth < self.depth_limit {
-                cached_eval = None;
-            }
-        }
-
-        self.logger
-            .register_lookup_result(cached_eval.as_ref(), self.depth_limit);
-
-        cached_eval
-    }
-}
-
-impl<G, H> MeanMax<G, H>
-where
-    G: game::GameState + Clone + Display,
-    G::Outcome: game::DiscreteDistribution<T = G> + Hash + cmp::Eq + Clone + Display,
-    G::Action: game::Discrete + Clone + Display,
-    Value: From<G::Reward> + From<<G::Outcome as game::DiscreteDistribution>::Weight>,
-    H: heuristic::Heuristic<G::Outcome, Value>,
+    H: Default,
+    G: game::GameState + Send + Clone + Display + 'static,
+    G::Outcome: game::DiscreteDistribution<T = G> + Hash + Eq + Clone + Display,
+    G::Action: game::Discrete + Send + Clone + Display,
+    searcher::Value: From<G::Reward> + From<<G::Outcome as game::DiscreteDistribution>::Weight>,
+    H: super::heuristic::Heuristic<G::Outcome, searcher::Value>,
     <G::Outcome as game::DiscreteDistribution>::Weight: Debug,
 {
-    pub fn decide_until(&mut self, state: &G, constraint: SearchConstraint) -> Decision<G::Action> {
-        let search_handle = self.logger.start_search(state, constraint);
+    const DEFAULT_CACHE_SIZE: usize = 0xF0000;
 
-        // Initial search depth
-        self.depth_limit = match constraint.deadline {
-            // If there is a deadline, start at depth 0 and go deeper
-            Some(_) => max_depth::MaxDepth::new(0),
-            // Otherwise, search with the maximum depth
-            None => constraint.max_depth,
+    pub fn decide_until(
+        &mut self,
+        state: &G,
+        constraint: searcher::SearchConstraint,
+    ) -> searcher::Decision<G::Action> {
+        let search_handle = self.logger.lock().unwrap().start_search(state, constraint);
+
+        let mut search_constraint = searcher::SearchConstraint {
+            // No deadline for the initial search
+            deadline: None,
+            // Initial search depth
+            max_depth: match constraint.deadline {
+                // If there is a deadline, start at depth 0 and go deeper
+                Some(_) => max_depth::MaxDepth::new(0),
+                // Otherwise, search with the maximum depth
+                None => constraint.max_depth,
+            },
         };
 
-        // Remove the previous deadline for the initial search
-        self.deadline = None;
+        let mut busy_tasks = HashSet::new();
 
-        let mut decision = self
-            .make_decision(state)
-            .expect("searching with no constraint");
+        for (task_id, searcher) in self.searcher_threads.iter().enumerate() {
+            let task = Task {
+                task_id,
+                search_constraint,
+                state: state.clone(),
+            };
 
-        self.deadline = constraint.deadline;
+            search_constraint.deadline = constraint.deadline;
+
+            searcher
+                .task_sender
+                .send(task)
+                .expect("searcher thread should be alive as long as the sender is alive");
+
+            busy_tasks.insert(task_id);
+
+            search_constraint.max_depth += 1;
+            search_constraint.max_depth = search_constraint.max_depth.min(constraint.max_depth);
+        }
+
+        let mut decision: Option<searcher::Decision<G::Action>> = None;
+        let mut search_done = false;
 
         // Search deeper loop
-        // PERF: this can be done concurrently
-        loop {
-            self.logger
-                .register_search_result(&search_handle, &decision);
+        while !busy_tasks.is_empty() {
+            let SearchResult {
+                task_id,
+                state: _,
+                result,
+            } = self
+                .result_receiver
+                .recv()
+                .expect("there should be at least one result sender alive");
+            log::trace!("Result from searcher #{task_id}");
+
+            busy_tasks.remove(&task_id);
+
+            let Ok(new_decision) = result else {
+                search_done = true;
+                continue;
+            };
+
+            let mut logger = self.logger.lock().unwrap();
+            logger.register_search_result(&search_handle, &new_decision);
+
+            search_constraint.max_depth = search_constraint
+                .max_depth
+                .max(new_decision.eval().min_depth);
+
+            match decision {
+                None => decision = Some(new_decision),
+                Some(ref best_decision) => {
+                    if new_decision.eval().min_depth > best_decision.eval().min_depth {
+                        decision = Some(new_decision);
+                    }
+                }
+            }
 
             // If last decision was Resign break
-            let last_decision = match &decision {
-                Decision::Act(last_decision) => last_decision,
-                Decision::Resign => break,
+            let last_decision = match decision.as_ref().unwrap() {
+                searcher::Decision::Act(last_decision) => last_decision,
+                searcher::Decision::Resign => {
+                    search_done = true;
+                    continue;
+                }
             };
 
             // Reached the max_depth, abort
             if last_decision.eval.min_depth >= constraint.max_depth {
-                break;
+                search_done = true;
+                continue;
             }
 
             // Move the depth limit higher for a deeper search
-            self.depth_limit = last_decision.eval.min_depth + 1;
+            search_constraint.max_depth += 1;
 
-            match self.make_decision(state) {
-                Ok(new_decision) => decision = new_decision,
-                Err(SearchError::TimeOut) => break,
+            if search_done {
+                continue;
             }
-        }
 
-        self.logger.end_search(search_handle);
-        decision
-    }
-
-    pub fn evaluate_state(&mut self, state: &G) -> EvaluationResult {
-        let in_the_past = |instant: Instant| !instant.elapsed().is_zero();
-
-        if self.deadline.is_some_and(in_the_past) {
-            Err(SearchError::TimeOut)
-        } else {
-            self.make_decision(state).map(|decision| decision.eval())
-        }
-    }
-
-    pub fn make_decision(&mut self, state: &G) -> DecisionResult<<G as game::GameState>::Action> {
-        let mut best_decision = Decision::Resign;
-
-        for action in <G::Action as game::Discrete>::iter() {
-            let (reward, outcome) = state.clone().outcome(action.clone());
-
-            // TODO: Make this iterative instead of recursive.
-            let eval = self.evaluate_outcome(outcome)?;
-            let eval = Evaluation {
-                value: eval.value + f32::from(reward),
-                min_depth: eval.min_depth,
+            let task = Task {
+                task_id,
+                search_constraint,
+                state: state.clone(),
             };
 
-            let new_decision = Decision::Act(EvaluatedAction { eval, action });
-            best_decision = best_decision.max_by_eval(new_decision);
+            log::trace!("Scheduling #{task_id} for {search_constraint}");
+
+            self.searcher_threads[task_id]
+                .task_sender
+                .send(task)
+                .expect("searcher thread should be alive as long as the sender is alive");
+
+            busy_tasks.insert(task_id);
         }
 
-        Ok(best_decision)
+        self.logger.lock().unwrap().end_search(search_handle);
+        decision.unwrap()
     }
 
-    fn evaluate_outcome(&mut self, outcome: G::Outcome) -> EvaluationResult {
-        if outcome.clone().into_iter().next().is_none() {
-            return Ok(Evaluation::TERMINAL);
-        }
+    pub fn add_searcher(&mut self) {
+        let (task_sender, task_reciever) = mpsc::channel::<Task<G>>();
+        let result_sender = self.result_sender.clone();
 
-        if let Some(evaluation) = self.cached_evaluation(&outcome) {
-            return Ok(evaluation);
-        }
-
-        // Decrease depth limit for the recursive call
-        self.depth_limit = match self.depth_limit - 1 {
-            Some(depth_limit) => depth_limit,
-            None => {
-                let evaluation = Evaluation {
-                    value: self.heuristic.eval(&outcome),
-                    min_depth: max_depth::MaxDepth::new(0),
-                };
-
-                return Ok(evaluation);
+        let logger = logger::LoggerHandle::new(self.logger.clone());
+        let thread = std::thread::spawn(move || {
+            let capacity = Self::DEFAULT_CACHE_SIZE.try_into().unwrap();
+            let heuristic = H::default();
+            let mut searcher = searcher::Searcher::new(heuristic, capacity, logger);
+            while let Ok(task) = task_reciever.recv() {
+                let result = searcher.search(task);
+                if result_sender.send(result).is_err() {
+                    break;
+                }
             }
+        });
+
+        let searcher = SearcherThread {
+            thread,
+            task_sender,
         };
 
-        let mut mean_value = WeightedAverage::<Value, Value>::default();
-        let mut min_depth = max_depth::MaxDepth::Unlimited;
-
-        for weighted in outcome.clone() {
-            let eval = self.evaluate_state(&weighted.value)?;
-
-            min_depth = std::cmp::min(eval.min_depth, min_depth);
-            mean_value += Weighted {
-                value: eval.value,
-                weight: f32::from(weighted.weight),
-            };
-        }
-
-        let eval = Evaluation {
-            value: mean_value.evaluate(),
-            min_depth: min_depth + 1,
-        };
-
-        if eval.min_depth.max_u8() > 2 {
-            self.heuristic.update(outcome.clone(), eval.value);
-        }
-
-        self.evaluation_cache.put(outcome, eval);
-
-        self.depth_limit += 1;
-        Ok(eval)
+        self.searcher_threads.push(searcher);
     }
 }

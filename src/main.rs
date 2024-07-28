@@ -1,6 +1,10 @@
-use rust_2048_solver::bots::mean_max::{Decision, MeanMax, SearchConstraint};
-use rust_2048_solver::game::{twenty_forty_eight::State, GameState, Outcome};
-use rust_2048_solver::utils;
+use rust_2048_solver::{
+    bots::mean_max::{
+        searcher::{Decision, SearchConstraint},
+        MeanMax,
+    },
+    game::{twenty_forty_eight::State, GameState, Outcome},
+};
 use std::io::Write;
 use std::time::{Duration, Instant};
 
@@ -11,6 +15,7 @@ fn main() {
 
     env_logger::Builder::new()
         .filter_level(log::LevelFilter::Debug)
+        //.filter_level(log::LevelFilter::Trace)
         .parse_default_env()
         .init();
 
@@ -21,18 +26,20 @@ fn main() {
 
     let mut ai = MeanMax::new();
 
-    ai.logger.log_search_results = true;
-    ai.logger.log_cache_info = false;
-    ai.logger.log_deadline_miss = true;
-    ai.logger.clear_screen = true;
-    ai.logger.print_size_of_critical_structs = false;
+    {
+        let mut logger = ai.logger.lock().unwrap();
+        logger.log_search_results = true;
+        logger.log_deadline_miss = true;
+        logger.clear_screen = true;
+        logger.print_size_of_critical_structs = false;
+    }
 
     let auto_adjust_search_time = false;
-    let base_search_time = Duration::from_secs_f64(0.02);
+    let base_search_time = Duration::from_secs_f64(0.5);
 
     let mut search_time_multiplier = 1;
 
-    if ai.logger.clear_screen {
+    if ai.logger.lock().unwrap().clear_screen {
         rust_2048_solver::init_screen();
     }
 
@@ -48,7 +55,7 @@ fn main() {
 
         // utils::print_lookup(&ai);
         // utils::print_model(&ai.model);
-        utils::show_fill_percent(&ai.evaluation_cache);
+        // utils::show_fill_percent(&ai.evaluation_cache);
 
         let act = match decision {
             Decision::Act(act) => act,
@@ -83,7 +90,7 @@ fn main() {
         }
     }
 
-    if ai.logger.clear_screen {
+    if ai.logger.lock().unwrap().clear_screen {
         rust_2048_solver::end_screen();
     }
 

@@ -41,7 +41,10 @@ pub fn end_screen() {
 }
 
 pub fn measure_performance() -> f32 {
-    use bots::mean_max::{Decision, MeanMax, SearchConstraint};
+    use bots::mean_max::{
+        searcher::{Decision, SearchConstraint},
+        MeanMax,
+    };
     use game::twenty_forty_eight::State;
     use std::time;
 

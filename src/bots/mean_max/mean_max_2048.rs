@@ -1,24 +1,29 @@
 use crate::bots::heuristic::TwentyFortyEightHeuristic;
 use crate::game::twenty_forty_eight::State;
-use std::num::NonZeroUsize;
+use std::sync::{Arc, Mutex};
 
 impl<const ROWS: usize, const COLS: usize>
     super::MeanMax<State<COLS, ROWS>, TwentyFortyEightHeuristic<COLS, ROWS>>
 {
-    const DEFAULT_CACHE_SIZE: usize = 10_000_000;
-
     pub fn new() -> Self {
-        Self::new_with_cache_size(Self::DEFAULT_CACHE_SIZE.try_into().unwrap())
-    }
+        let (result_sender, result_receiver) = std::sync::mpsc::channel();
 
-    pub fn new_with_cache_size(capacity: NonZeroUsize) -> Self {
-        Self {
-            evaluation_cache: lru::LruCache::new(capacity),
-            deadline: None,
-            depth_limit: super::max_depth::MaxDepth::Unlimited,
-            heuristic: TwentyFortyEightHeuristic::new(),
-            logger: super::logger::Logger::new(),
-        }
+        let mut this = Self {
+            logger: Arc::new(Mutex::new(super::logger::Logger::new())),
+            heuristic: std::marker::PhantomData,
+
+            searcher_threads: Vec::new(),
+            result_receiver,
+            result_sender,
+        };
+
+        let num_threads = std::thread::available_parallelism()
+            .ok()
+            //.and_then(|threads| std::num::NonZeroUsize::new(threads.get() - 1))
+            .unwrap_or(std::num::NonZeroUsize::MIN);
+
+        (0..num_threads.get()).for_each(|_| this.add_searcher());
+        this
     }
 }
 
