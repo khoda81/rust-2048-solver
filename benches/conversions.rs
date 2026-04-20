@@ -1,4 +1,5 @@
-use criterion::{black_box, criterion_group, Criterion};
+use criterion::{criterion_group, Criterion};
+use std::hint::black_box;
 
 fn conversions(c: &mut Criterion) {
     let mut group = c.benchmark_group("f32<->i32");

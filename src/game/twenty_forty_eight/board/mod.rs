@@ -94,7 +94,7 @@ impl From<Weight> for f64 {
 }
 pub type Cell = u8;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Cells<const COLS: usize, const ROWS: usize> {
     pub cells: [[Cell; COLS]; ROWS],
 }

@@ -1,5 +1,5 @@
 use criterion::{criterion_group, BenchmarkId, Criterion, Throughput};
-use rand::seq::SliceRandom;
+use rand::seq::IndexedRandom;
 use rust_2048_solver::game::twenty_forty_eight::State;
 use rust_2048_solver::game::{Discrete, GameState, Outcome};
 use std::hash::{self, Hash as _};
@@ -14,7 +14,7 @@ fn generate_states(count: usize) -> Vec<State<4, 4>> {
     ]);
 
     let mut states = vec![starting_state];
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     while states.len() < count {
         let state = states.choose(&mut rng).unwrap().clone();
 

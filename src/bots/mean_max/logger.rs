@@ -193,7 +193,7 @@ impl LoggerHandle {
         }
     }
 
-    fn logger(&mut self) -> MutexGuard<Logger> {
+    fn logger(&'_ mut self) -> MutexGuard<'_, Logger> {
         self.logger.lock().unwrap_or_else(|e| {
             panic!("Failed to acquire lock on Logger: {e}");
         })

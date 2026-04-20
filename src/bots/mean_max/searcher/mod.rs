@@ -1,10 +1,14 @@
 use super::logger::LoggerHandle;
 use super::max_depth::MaxDepth;
 use crate::accumulator::fraction::{Weighted, WeightedAverage};
+use crate::game::twenty_forty_eight;
 use crate::{bots::heuristic, game, utils};
+use std::any::Any;
 use std::fmt::Debug;
 use std::{cmp, fmt::Display, hash::Hash, time::Instant};
 use thiserror::Error;
+
+pub mod cache;
 
 pub type Value = f32;
 
@@ -167,26 +171,31 @@ impl Display for SearchConstraint {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct SearchPriority {
+    depth: u8,
+    step: u8,
+}
+
 pub(super) struct Searcher<Game: game::GameState, Heuristic> {
     pub depth_limit: MaxDepth,
     pub deadline: Option<Instant>,
     pub logger: LoggerHandle,
     heuristic: Heuristic,
-    evaluation_cache: lru::LruCache<Game::Outcome, Evaluation>,
+    evaluation_cache: cache::PriorityCache<Game::Outcome, Evaluation, SearchPriority>,
 }
 
 impl<G, H> Searcher<G, H>
 where
     G: game::GameState,
-    G::Outcome: Hash + Eq,
 {
-    pub fn new(heuristic: H, capacity: std::num::NonZero<usize>, logger: LoggerHandle) -> Self {
+    pub fn new(heuristic: H, capacity: std::num::NonZeroUsize, logger: LoggerHandle) -> Self {
         Self {
             depth_limit: MaxDepth::Unlimited,
             deadline: None,
             heuristic,
             logger,
-            evaluation_cache: lru::LruCache::new(capacity),
+            evaluation_cache: cache::PriorityCache::new(capacity.get()),
         }
     }
 }
@@ -220,13 +229,16 @@ where
 impl<G, H> Searcher<G, H>
 where
     G: game::GameState + Clone + Display,
-    G::Outcome: game::DiscreteDistribution<T = G> + Hash + cmp::Eq + Clone + Display,
+    G::Outcome: game::DiscreteDistribution<T = G> + Hash + Ord + Clone + Display,
     G::Action: game::Discrete + Clone + Display,
     Value: From<G::Reward> + From<<G::Outcome as game::DiscreteDistribution>::Weight>,
     H: heuristic::Heuristic<G::Outcome, Value>,
     <G::Outcome as game::DiscreteDistribution>::Weight: Debug,
 {
-    pub fn evaluate_state(&mut self, state: &G) -> EvaluationResult {
+    pub fn evaluate_state(&mut self, state: &G) -> EvaluationResult
+    where
+        <G as game::GameState>::Outcome: 'static,
+    {
         let in_the_past = |instant: Instant| !instant.elapsed().is_zero();
 
         if self.deadline.is_some_and(in_the_past) {
@@ -236,7 +248,10 @@ where
         }
     }
 
-    pub fn make_decision(&mut self, state: &G) -> DecisionResult<G::Action> {
+    pub fn make_decision(&mut self, state: &G) -> DecisionResult<G::Action>
+    where
+        <G as game::GameState>::Outcome: 'static,
+    {
         let mut best_decision = Decision::Resign;
 
         for action in <G::Action as game::Discrete>::iter() {
@@ -256,7 +271,10 @@ where
         Ok(best_decision)
     }
 
-    fn evaluate_outcome(&mut self, outcome: G::Outcome) -> EvaluationResult {
+    fn evaluate_outcome(&mut self, outcome: G::Outcome) -> EvaluationResult
+    where
+        <G as game::GameState>::Outcome: 'static,
+    {
         if outcome.clone().into_iter().next().is_none() {
             return Ok(Evaluation::TERMINAL);
         }
@@ -296,17 +314,35 @@ where
             min_depth: min_depth + 1,
         };
 
+        let step = {
+            if let Some(outcome_2048) =
+                <dyn Any>::downcast_ref::<twenty_forty_eight::Outcome<4, 4>>(&outcome)
+            {
+                outcome_2048.cells.cells.as_flattened().iter().sum()
+            } else {
+                0
+            }
+        };
+
         if eval.min_depth.max_u8() > 2 {
             self.heuristic.update(outcome.clone(), eval.value);
         }
 
-        self.evaluation_cache.put(outcome, eval);
+        let search_priority = SearchPriority {
+            depth: eval.min_depth.max_u8(),
+            step,
+        };
+
+        self.evaluation_cache.put(outcome, eval, search_priority);
 
         self.depth_limit += 1;
         Ok(eval)
     }
 
-    pub fn search(&mut self, task: super::Task<G>) -> super::SearchResult<G> {
+    pub fn search(&mut self, task: super::Task<G>) -> super::SearchResult<G>
+    where
+        <G as game::GameState>::Outcome: 'static,
+    {
         self.depth_limit = task.search_constraint.max_depth;
         self.deadline = task.search_constraint.deadline;
 

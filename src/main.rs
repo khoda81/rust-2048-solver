@@ -34,8 +34,8 @@ fn main() {
         logger.print_size_of_critical_structs = false;
     }
 
-    let auto_adjust_search_time = false;
-    let base_search_time = Duration::from_secs_f64(0.5);
+    let auto_adjust_search_time = true;
+    let base_search_time = Duration::from_secs_f64(0.1);
 
     let mut search_time_multiplier = 1;
 

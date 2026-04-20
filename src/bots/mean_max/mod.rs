@@ -50,7 +50,7 @@ impl<G, H> MeanMax<G, H>
 where
     H: Default,
     G: game::GameState + Send + Clone + Display + 'static,
-    G::Outcome: game::DiscreteDistribution<T = G> + Hash + Eq + Clone + Display,
+    G::Outcome: game::DiscreteDistribution<T = G> + Hash + Ord + Clone + Display,
     G::Action: game::Discrete + Send + Clone + Display,
     searcher::Value: From<G::Reward> + From<<G::Outcome as game::DiscreteDistribution>::Weight>,
     H: super::heuristic::Heuristic<G::Outcome, searcher::Value>,

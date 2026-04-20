@@ -2,7 +2,10 @@ pub mod board;
 
 use crate::accumulator::fraction::Weighted;
 use board::{Cells, Direction};
-use rand::distributions::{Distribution as _, WeightedError, WeightedIndex};
+use rand::distr::{
+    weighted::{Error as WeightedError, WeightedIndex},
+    Distribution as _,
+};
 use std::fmt::{self, Debug, Display};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -17,7 +20,7 @@ impl<const COLS: usize, const ROWS: usize> State<COLS, ROWS> {
         let options: Vec<_> = board::Spawns::new(cells).collect();
         let weights = options.iter().map(|weighted| weighted.weight.get());
         let dist = WeightedIndex::new(weights).unwrap();
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let index = dist.sample(&mut rng);
 
         Self::from_cells(options[index].value)
@@ -62,7 +65,7 @@ impl<const ROWS: usize, const COLS: usize> Display for State<COLS, ROWS> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Outcome<const COLS: usize, const ROWS: usize> {
     pub(crate) cells: Cells<COLS, ROWS>,
 }
@@ -112,10 +115,10 @@ impl<const COLS: usize, const ROWS: usize> super::Outcome<State<COLS, ROWS>>
 
         match WeightedIndex::new(weights) {
             Ok(weighted_index) => {
-                let idx = weighted_index.sample(&mut rand::thread_rng());
+                let idx = weighted_index.sample(&mut rand::rng());
                 items.swap_remove(idx)
             }
-            Err(WeightedError::NoItem) => State::from_cells(Cells::new()),
+            Err(WeightedError::InvalidWeight) => State::from_cells(Cells::new()),
             Err(err) => panic!(
                 "Failed to collapse outcome: {err}\noutcome:\n{}",
                 &self.cells
